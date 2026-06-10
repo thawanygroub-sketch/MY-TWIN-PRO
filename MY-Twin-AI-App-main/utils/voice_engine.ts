@@ -1,6 +1,6 @@
 import * as Speech from "expo-speech";
+import { useTwinStore } from "../store/useTwinStore";
 
-// ── أنواع إعدادات الصوت ────────────────────────
 export interface VoiceOptions {
   pitch?: number;
   rate?: number;
@@ -12,12 +12,10 @@ export interface VoiceOptions {
   personality?: string;
 }
 
-// ── طابور التشغيل ──────────────────────────────
 let speakQueue: Array<{ text: string; options: VoiceOptions }> = [];
 let isSpeakingNow = false;
 let currentInterrupt: (() => void) | null = null;
 
-// ── إعدادات الصوت حسب الشخصية والعاطفة ─────────
 const EMOTION_PRESETS: Record<string, { pitch: number; rate: number }> = {
   joy:       { pitch: 1.15, rate: 0.95 },
   sadness:   { pitch: 0.85, rate: 0.75 },
@@ -38,27 +36,31 @@ const PERSONALITY_PRESETS: Record<string, { pitch: number; rate: number }> = {
   romantic:   { pitch: 1.05, rate: 0.8  },
 };
 
-// ── تنظيف النص من الإيموجي والرموز ─────────────
+// ✅ أصوات حسب النوع
+const GENDER_VOICES: Record<string, string> = {
+  male: 'ar-SA-HamedNeural',
+  female: 'ar-SA-ZariyahNeural',
+};
+
 function cleanTextForSpeech(text: string): string {
   if (!text) return "";
   return text
-    .replace(/\p{Extended_Pictographic}/gu, "") // كل الإيموجي
-    .replace(/[\u2600-\u27BF]/gu, "")          // رموز متنوعة
-    .replace(/[❤️‍🔥✨🌟💜🫂🤗🫶💕💖💪🤝]/gu, "") // رموز قلب وغيرها
-    .replace(/\*\*/g, "")                       // Markdown bold
-    .replace(/\*/g, "")                         // Markdown italic
-    .replace(/__/g, "")                         // Markdown underline
-    .replace(/~~/g, "")                         // Markdown strikethrough
-    .replace(/`/g, "")                          // Markdown code
-    .replace(/#{1,6}\s/g, "")                   // Markdown headers
-    .replace(/\[(.*?)\]\(.*?\)/g, "$1")         // Markdown links
-    .replace(/\n{2,}/g, "، ")                   // أسطر متعددة
-    .replace(/\n/g, " ")                        // أسطر مفردة
-    .replace(/\s{2,}/g, " ")                    // مسافات متعددة
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[\u2600-\u27BF]/gu, "")
+    .replace(/[❤️‍🔥✨🌟💜🫂🤗🫶💕💖💪🤝]/gu, "")
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    .replace(/__/g, "")
+    .replace(/~~/g, "")
+    .replace(/`/g, "")
+    .replace(/#{1,6}\s/g, "")
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .replace(/\n{2,}/g, "، ")
+    .replace(/\n/g, " ")
+    .replace(/\s{2,}/g, " ")
     .trim();
 }
 
-// ── دالة التحدث الرئيسية ───────────────────────
 export async function speakResponse(
   text: string,
   options?: VoiceOptions
@@ -67,37 +69,35 @@ export async function speakResponse(
     const clean = cleanTextForSpeech(text);
     if (!clean) return;
 
-    // احسب pitch و rate النهائيين
+    // ✅ جلب نوع التوأم من المتجر لاختيار الصوت المناسب
+    const twinGender = useTwinStore.getState().twinGender || 'female';
+    const defaultVoice = GENDER_VOICES[twinGender] || GENDER_VOICES.female;
+
     let pitch = options?.pitch ?? 1.0;
     let rate = options?.rate ?? 0.9;
 
-    // تعديل حسب العاطفة
     if (options?.emotion && EMOTION_PRESETS[options.emotion]) {
       const preset = EMOTION_PRESETS[options.emotion];
       pitch = preset.pitch;
       rate = preset.rate;
     }
 
-    // تعديل حسب الشخصية
     if (options?.personality && PERSONALITY_PRESETS[options.personality]) {
       const preset = PERSONALITY_PRESETS[options.personality];
-      pitch = (pitch + preset.pitch) / 2; // متوسط بين العاطفة والشخصية
+      pitch = (pitch + preset.pitch) / 2;
       rate = (rate + preset.rate) / 2;
     }
 
-    // تعديل الشدة
     if (options?.intensity && options.intensity > 0.7) {
       pitch += 0.05;
       rate += 0.05;
     }
 
-    // أضف للطابور
     speakQueue.push({
       text: clean,
-      options: { ...options, pitch, rate },
+      options: { ...options, pitch, rate, voiceId: defaultVoice },
     });
 
-    // ابدأ المعالجة إذا لم تكن قيد التشغيل
     if (!isSpeakingNow) {
       processQueue();
     }
@@ -106,7 +106,6 @@ export async function speakResponse(
   }
 }
 
-// ── معالجة الطابور ─────────────────────────────
 async function processQueue(): Promise<void> {
   if (speakQueue.length === 0) {
     isSpeakingNow = false;
@@ -147,11 +146,9 @@ async function processQueue(): Promise<void> {
     console.warn("TTS playback error:", e);
   }
 
-  // معالجة التالي في الطابور
   processQueue();
 }
 
-// ── إيقاف الكلام فوراً ─────────────────────────
 export function stopSpeaking(): void {
   if (currentInterrupt) {
     currentInterrupt();
@@ -161,12 +158,10 @@ export function stopSpeaking(): void {
   Speech.stop();
 }
 
-// ── هل يتحدث حالياً؟ ───────────────────────────
 export function isSpeaking(): Promise<boolean> {
   return Speech.isSpeakingAsync();
 }
 
-// ── الحصول على الأصوات المتاحة ────────────────
 export async function getAvailableVoices(): Promise<Speech.Voice[]> {
   try {
     const voices = await Speech.getAvailableVoicesAsync();
@@ -177,19 +172,6 @@ export async function getAvailableVoices(): Promise<Speech.Voice[]> {
   }
 }
 
-// ── إيقاف تلقائي عند التسجيل ──────────────────
 export function autoInterrupt(): void {
   stopSpeaking();
-}
-
-// ── إعدادات افتراضية للباقات (مُرسلة من الـ Backend) ──
-export function getVoicePresetFromTier(tier: string): Partial<VoiceOptions> {
-  const presets: Record<string, Partial<VoiceOptions>> = {
-    free:   { pitch: 1.0, rate: 0.9 },
-    plus:   { pitch: 1.0, rate: 0.9 },
-    premium:{ pitch: 1.05, rate: 0.85 },
-    pro:    { pitch: 1.1, rate: 0.85 },
-    yearly: { pitch: 1.1, rate: 0.85 },
-  };
-  return presets[tier] || presets.free;
 }

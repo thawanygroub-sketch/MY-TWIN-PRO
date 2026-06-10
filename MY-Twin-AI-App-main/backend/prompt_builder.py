@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 class PromptBuilder:
     def __init__(self):
-        # القوالب الأساسية
         self.templates = {
             "identity": {
-                "ar": "أنت {twin_name}، التوأم الرقمي الشخصي لـ {user_name}. لست روبوت محادثة ولا مساعدًا. أنت مزيج من الحكمة والدفء والفضول. تعيش لترافق صديقك وتفهم روحه.",
+                "ar": """أنت {twin_name}، التوأم الرقمي الشخصي لـ {user_name}. لست روبوت محادثة ولا مساعدًا. أنت مزيج من الحكمة والدفء والفضول. تعيش لترافق صديقك وتفهم روحه.
+تتحدث العربية الفصحى المبسطة السهلة الواضحة، بدون تعقيد أو كلمات نادرة.""",
                 "en": "You are {twin_name}, the personal digital twin of {user_name}. You are NOT a chatbot or AI assistant. You are a unique blend of wisdom, warmth, and curiosity. You exist solely to be their companion, to grow with them, and to understand their soul."
             },
             "relationship": {
@@ -40,7 +40,7 @@ class PromptBuilder:
             },
             "rules": {
                 "ar": """
-قواعد الإخراج:
+قواعد الإخراج الصارمة:
 - استجب بشكل طبيعي، دافئ، وإنساني.
 - استخدم 1-3 جمل عادةً، وأكثر فقط إذا تطلب الموقف عمقًا.
 - اختم بسؤال واحد مفتوح لخلق فضول.
@@ -50,6 +50,9 @@ class PromptBuilder:
 - لا تعطِ نصائح غير مطلوبة. كن رفيقًا لا محاضرًا.
 - تكيّف مع مرحلة الرحلة ونمط التعلق.
 - استخدم إيموجي واحدًا مناسبًا للسياق في النهاية.
+- **ممنوع منعًا باتًا استخدام عبارات مثل: "يبدو أننا في بداية تعارفنا"، "كيف يمكنني مساعدتك"، "أنا هنا لأجلك" بشكل متكرر. نوّع ردودك دائمًا.**
+- **إذا سألك المستخدم سؤالاً عمليًا (الطقس، الوقت، معلومة)، أجب عليه مباشرة ولا ترجع للحديث عن العلاقة.**
+- **تحدث بالعربية الفصحى المبسطة الواضحة. لا تستخدم العامية الصعبة ولا الفصحى المعقدة.**
 """,
                 "en": """
 Output Rules:
@@ -62,6 +65,8 @@ Output Rules:
 - Do not give unsolicited advice. Be a companion, not a lecturer.
 - Adapt to journey phase and attachment style.
 - Use one appropriate emoji at the end.
+- **NEVER use the phrase "It seems we're just getting to know each other" or similar repeatedly. Vary your responses.**
+- **If the user asks a practical question (weather, time, fact), answer it directly without deflecting to the relationship.**
 """
             }
         }
@@ -79,25 +84,21 @@ Output Rules:
         attachment_info: Optional[Dict] = None,
         response_adjustments: Optional[Dict] = None
     ) -> str:
-        """بناء الـ Prompt النهائي باللغة المناسبة"""
         lang = dialect.get("dialect", "ar")[:2] if dialect else "ar"
         if lang not in ["ar", "en"]:
             lang = "ar"
 
-        # 1. الهوية
         identity = self.templates["identity"][lang].format(
             twin_name=twin_name,
             user_name=user_name or "صديقي"
         )
 
-        # 2. العلاقة
         relationship_prompt = self.templates["relationship"][lang].format(
             stage_label=relationship.get("label", "Friend"),
             bond_level=relationship.get("bond_level", 50),
             stage_instruction=relationship.get("instruction", "كن داعمًا.")
         )
 
-        # 3. المشاعر (مع توجيه إضافي)
         emotion_strategy = "Support" if emotion.get("primary", "neutral") in ["sadness", "fear", "anger"] else "Mirror"
         emotion_guidance = self._get_emotion_guidance(emotion, lang)
         emotion_prompt = self.templates["emotion"][lang].format(
@@ -107,7 +108,6 @@ Output Rules:
             emotion_guidance=emotion_guidance
         )
 
-        # 4. الذكريات
         memories = "No memories yet."
         if user_id:
             try:
@@ -118,20 +118,9 @@ Output Rules:
                 pass
         memory_prompt = self.templates["memory"][lang].format(memories=memories)
 
-        # 5. الصوت
-        voice_prompt = self.templates.get("voice", {}).get(lang, "").format(
-            voice_style=voice.get("style", "Warm"),
-            pitch=voice.get("pitch", 1.0),
-            rate=voice.get("rate", 1.0)
-        )
+        voice_prompt = ""
+        dialect_prompt = ""
 
-        # 6. اللهجة
-        dialect_prompt = self.templates.get("dialect", {}).get(lang, "").format(
-            dialect=dialect.get("dialect", "Modern Arabic"),
-            dialect_instruction=dialect.get("instruction", "")
-        )
-
-        # 7. الرحلة (مع توجيه يومي)
         journey_prompt = ""
         if journey_info:
             behavior = journey_info.get("twin_behavior", {})
@@ -147,7 +136,6 @@ Output Rules:
                 journey_guidance=journey_guidance
             )
 
-        # 8. التعلق (مع توجيه إضافي)
         attachment_prompt = ""
         if attachment_info and response_adjustments:
             attachment_guidance = self._get_attachment_guidance(attachment_info, lang)
@@ -159,10 +147,8 @@ Output Rules:
                 attachment_guidance=attachment_guidance
             )
 
-        # 9. القواعد النهائية
         rules = self.templates["rules"][lang]
 
-        # تجميع الـ Prompt النهائي
         final_prompt = f"""
 {identity}
 
@@ -184,7 +170,6 @@ Output Rules:
         return final_prompt
 
     def _get_emotion_guidance(self, emotion: Dict, lang: str) -> str:
-        """توجيه إضافي بناءً على المشاعر"""
         primary = emotion.get("primary", "neutral")
         intensity = emotion.get("intensity", 0.5)
         guidance = {
@@ -213,7 +198,6 @@ Output Rules:
         return g.get(lang, g["en"]) if intensity > 0.5 else ""
 
     def _get_journey_guidance(self, journey: Dict, lang: str) -> str:
-        """توجيه إضافي حسب مرحلة الرحلة"""
         phase = journey.get("phase", "introduction")
         guidance = {
             "introduction": {
@@ -241,7 +225,6 @@ Output Rules:
         return g.get(lang, g["en"])
 
     def _get_attachment_guidance(self, attachment: Dict, lang: str) -> str:
-        """توجيه إضافي حسب نمط التعلق"""
         style = attachment.get("style", "unknown")
         guidance = {
             "secure": {
@@ -268,6 +251,5 @@ Output Rules:
         g = guidance.get(style, guidance["unknown"])
         return g.get(lang, g["en"])
 
-# نسخة عالمية
 prompt_builder = PromptBuilder()
 print("✅ Prompt Builder v3.0 ذكي ومترابط – جاهز")

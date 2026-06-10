@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Animated, ActivityIndicator, Text, Dimensions, SafeAreaView } from 'react-native';
+import { View, StyleSheet, Animated, Dimensions, SafeAreaView } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { useTwinStore } from '../store/useTwinStore';
@@ -11,38 +11,51 @@ export default function SplashScreen() {
   const { setAuth, theme } = useTwinStore();
   const isDark = theme === 'dark';
 
-  const scaleAnim = useRef(new Animated.Value(0.3)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
-  const textOpacity = useRef(new Animated.Value(0)).current;
-  const subTextOpacity = useRef(new Animated.Value(0)).current;
-  const [loadingText, setLoadingText] = useState('');
+  // قيم الأنيميشن
+  const logoScale = useRef(new Animated.Value(0.3)).current;
+  const logoOpacity = useRef(new Animated.Value(0)).current;
+  const brandTextOpacity = useRef(new Animated.Value(0)).current;
+  const copyrightOpacity = useRef(new Animated.Value(0)).current;
+  
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
   const [routeReady, setRouteReady] = useState(false);
   const targetRoute = useRef('/login');
 
   useEffect(() => {
-    // بدء الأنيميشن
+    // تشغيل الأنيميشن المتسلسل
     animRef.current = Animated.sequence([
+      // المرحلة الأولى: ظهور الشعار وتكبيره
       Animated.parallel([
-        Animated.spring(scaleAnim, { toValue: 1, tension: 8, friction: 3, useNativeDriver: true }),
-        Animated.timing(opacityAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.spring(logoScale, {
+          toValue: 1,
+          tension: 8,
+          friction: 3,
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoOpacity, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
       ]),
-      Animated.parallel([
-        Animated.timing(textOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(subTextOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-      ]),
+      // المرحلة الثانية: ظهور اسم الشركة
+      Animated.timing(brandTextOpacity, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      // المرحلة الثالثة: ظهور سنة الحقوق
+      Animated.timing(copyrightOpacity, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
     ]);
     animRef.current.start();
 
-    const isAr = useTwinStore.getState().lang === 'ar';
-    const texts = {
-      checking: isAr ? 'جارٍ الاتصال بتوأمك...' : 'Connecting to your Twin...',
-      loading: isAr ? 'تحميل البيانات...' : 'Loading data...',
-    };
-
+    // بدء التحقق من الجلسة فوراً بالتوازي مع الأنيميشن
     const bootPromise = (async () => {
       try {
-        setLoadingText(texts.checking);
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
@@ -52,9 +65,7 @@ export default function SplashScreen() {
 
         setAuth(session.user.id);
         setToken(session.access_token);
-        setLoadingText(texts.loading);
 
-        // جلب ملف المستخدم
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('onboarded')
@@ -67,7 +78,6 @@ export default function SplashScreen() {
           return;
         }
 
-        // إذا لم يكن هناك صف أو لم يكمل الـ onboarding
         if (!profile || !profile.onboarded) {
           targetRoute.current = '/onboarding';
           return;
@@ -82,8 +92,8 @@ export default function SplashScreen() {
       }
     })();
 
-    // انتظر على الأقل مدة الأنيميشن (2.8 ثانية) مع التحقق
-    const minTime = new Promise(resolve => setTimeout(resolve, 2800));
+    // ضمان عرض الشاشة لمدة 3.5 ثانية على الأقل
+    const minTime = new Promise(resolve => setTimeout(resolve, 3500));
 
     Promise.all([bootPromise, minTime]).then(() => {
       if (!routeReady) setRouteReady(true);
@@ -104,31 +114,30 @@ export default function SplashScreen() {
   return (
     <SafeAreaView style={[styles.safe, isDark && { backgroundColor: '#1A1A1A' }]}>
       <View style={[styles.container, isDark && { backgroundColor: '#1A1A1A' }]}>
-        <View style={styles.group}>
+        {/* مجموعة المحتوى المركزي */}
+        <View style={styles.contentGroup}>
+          {/* الشعار */}
           <Animated.Image
             source={require('../assets/logo.png')}
             style={[
               styles.logo,
               {
-                transform: [{ scale: scaleAnim }],
-                opacity: opacityAnim,
+                transform: [{ scale: logoScale }],
+                opacity: logoOpacity,
               },
             ]}
             resizeMode="contain"
           />
-          <Animated.Text style={[styles.companyName, { opacity: textOpacity }, isDark && { color: '#D8B4FE' }]}>
-            Soul Sync
+          
+          {/* اسم الشركة */}
+          <Animated.Text style={[styles.brandText, { opacity: brandTextOpacity }]}>
+            By SOULSYNC
           </Animated.Text>
-          <Animated.Text style={[styles.copyright, { opacity: subTextOpacity }, isDark && { color: '#A78BFA' }]}>
+          
+          {/* حقوق النشر */}
+          <Animated.Text style={[styles.copyrightText, { opacity: copyrightOpacity }]}>
             ©2026
           </Animated.Text>
-        </View>
-
-        <View style={styles.loadingRow}>
-          <ActivityIndicator size="small" color={isDark ? '#D8B4FE' : '#6B21A8'} />
-          <Text style={[styles.loadingText, isDark && { color: '#D8B4FE' }]}>
-            {loadingText}
-          </Text>
         </View>
       </View>
     </SafeAreaView>
@@ -136,37 +145,34 @@ export default function SplashScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  group: { alignItems: 'center' },
-  logo: {
-    width: Math.min(SCREEN_WIDTH * 0.5, 240),
-    height: Math.min(SCREEN_WIDTH * 0.5, 240),
-    marginBottom: 16,
-  },
-  companyName: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#6B21A8',
-    letterSpacing: 2,
-    marginBottom: 6,
-    textTransform: 'uppercase',
-  },
-  copyright: { fontSize: 13, color: '#9B7FC7', letterSpacing: 1 },
-  loadingRow: {
-    flexDirection: 'row',
+  contentGroup: {
     alignItems: 'center',
-    gap: 8,
-    marginTop: 24,
   },
-  loadingText: {
-    fontSize: 13,
-    color: '#6B21A8',
-    fontWeight: '500',
+  logo: {
+    width: Math.min(SCREEN_WIDTH * 0.55, 280),
+    height: Math.min(SCREEN_WIDTH * 0.55, 280),
+    marginBottom: 24,
+  },
+  brandText: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#7C3AED',
+    letterSpacing: 4,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  copyrightText: {
+    fontSize: 14,
+    color: '#A78BFA',
+    letterSpacing: 2,
   },
 });
