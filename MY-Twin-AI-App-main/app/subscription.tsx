@@ -76,7 +76,7 @@ export default function SubscriptionScreen() {
         }
         const fetched = await getProducts();
         if (!cancelled) {
-          setProducts(fetched);
+          setProducts(fetched.map((p: any) => ({ ...p, price: Number(p.price) || 0 })));
           setIapAvailable(true);
         }
       } catch (e) {

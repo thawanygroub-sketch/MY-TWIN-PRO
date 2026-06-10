@@ -178,6 +178,11 @@ export default function Chat() {
         signal: abortRef.current.signal,
       });
       addMessage('twin', res.data.reply);
+          // إظهار فكرة التوأم إذا وجدت
+          if (res.data.twin_thought && res.data.twin_thought.trim()) {
+            addMessage('twin', '💭 ' + res.data.twin_thought); // true for special style
+          }
+
       updateBond(res.data.new_bond ?? 0);
           if (res.data.relationship_dims) updateRelationshipDims(res.data.relationship_dims); if (res.data.relationship_dims) updateRelationshipDims(res.data.relationship_dims);
       if (res.data.dims_update) updateRelationshipDims(res.data.dims_update);
