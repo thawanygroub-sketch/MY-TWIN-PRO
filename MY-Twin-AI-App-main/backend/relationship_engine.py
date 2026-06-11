@@ -1,24 +1,31 @@
 """
-MyTwin – Relationship Engine v3.0 (Deep & Interconnected)
-- 7 أبعاد: Trust, Attachment, Comfort, Openness, Romantic, Humor + Attachment Style
-- تحديث الأبعاد تلقائياً من محتوى الرسالة (فكاهة، ثقة، مشاعر)
-- تحديد المرحلة بناءً على مستوى الرباط ويُكيّف التعليمات حسب نمط التعلق ومرحلة الرحلة
-- تكامل مع twin_journey و attachment_engine
+MyTwin – Relationship Engine v4.0 (Adaptive & Deep)
+- 9 أبعاد ديناميكية (Trust, Comfort, Openness, Attachment, Romantic, Humor,
+  Consistency, Shared History, Att Style)
+- حساب الرابطة مركب من الأبعاد (weighted bond)
+- آلية إصلاح (Relationship Health)
+- ذاكرة أحداث العلاقة (Relationship Memory)
+- ربط مع Emotion Engine و TwinJourney
+- تحديث ذكي من المشاعر بدلاً من الكلمات فقط
 """
-import logging, re
-from typing import Dict, Any, Optional
+import logging, re, json
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timezone, timedelta
+from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
-# ── أبعاد العلاقة (7 أبعاد) ──────────────────────────
+# ── أبعاد العلاقة (9 أبعاد) ──────────────────────────
 RELATIONSHIP_DIMS = {
     "trust":       {"label_ar": "ثقة",      "label_en": "Trust"},
-    "attachment":  {"label_ar": "ارتباط",   "label_en": "Attachment"},
     "comfort":     {"label_ar": "راحة",     "label_en": "Comfort"},
     "openness":    {"label_ar": "انفتاح",   "label_en": "Openness"},
+    "attachment":  {"label_ar": "ارتباط",   "label_en": "Attachment"},
     "romantic":    {"label_ar": "عاطفي",    "label_en": "Romantic"},
     "humor":       {"label_ar": "فكاهة",    "label_en": "Humor"},
-    "att_style":   {"label_ar": "نمط تعلق", "label_en": "Attachment Style"},  # جديد
+    "consistency": {"label_ar": "اتساق",    "label_en": "Consistency"},
+    "shared_history": {"label_ar": "تاريخ مشترك", "label_en": "Shared History"},
+    "att_style":   {"label_ar": "نمط تعلق", "label_en": "Attachment Style"},
 }
 
 # ── مراحل العلاقة ──────────────────────────────────
@@ -55,32 +62,25 @@ STAGES = {
     },
 }
 
-# ── قواعد تحديث الأبعاد من المحتوى ──────────────────
-CONTENT_RULES = {
-    "trust": {
-        "ar": ["أثق بك", "أخبرتك سراً", "أعتمد عليك", "شكراً لوجودك"],
-        "en": ["trust you", "secret", "rely on you", "thank you for being here"],
-    },
-    "humor": {
-        "ar": ["ههه", "😂", "نكتة", "مضحك"],
-        "en": ["lol", "😂", "joke", "funny"],
-    },
-    "romantic": {
-        "ar": ["أحبك", "حبيبي", "قلبي", "وحشتني"],
-        "en": ["love you", "darling", "sweetheart", "miss you"],
-    },
-    "openness": {
-        "ar": ["أنا مش قادر", "خايف أقول", "عندي مشكلة", "بحتاج أتكلم"],
-        "en": ["i can't", "i'm scared to say", "i have a problem", "need to talk"],
-    },
-    "comfort": {
-        "ar": ["برتاح معاك", "أنت فاهم", "بحب أتكلم معاك"],
-        "en": ["comfortable with you", "you understand", "love talking to you"],
-    },
-    "attachment": {
-        "ar": ["بحتاجك", "ما تغيبش", "دائماً معايا"],
-        "en": ["need you", "don't leave", "always with me"],
-    },
+# ── تأثير المشاعر على الأبعاد ──────────────────────
+EMOTION_DIM_EFFECTS = {
+    "joy":       {"comfort": 0.2, "humor": 0.3, "openness": 0.1},
+    "sadness":   {"openness": 0.3, "trust": 0.2, "attachment": 0.2, "comfort": 0.1},
+    "fear":      {"attachment": 0.3, "trust": 0.2, "openness": 0.1},
+    "anger":     {"openness": 0.1, "trust": -0.1},
+    "love":      {"romantic": 0.4, "attachment": 0.3, "trust": 0.2, "comfort": 0.2},
+    "surprise":  {"openness": 0.2, "humor": 0.2},
+    "neutral":   {}
+}
+
+# ─ـ أوزان الأبعاد لحساب الرابطة المركبة ────────────
+BOND_WEIGHTS = {
+    "trust": 0.25,
+    "comfort": 0.20,
+    "openness": 0.20,
+    "attachment": 0.15,
+    "consistency": 0.10,
+    "shared_history": 0.10
 }
 
 class RelationshipEngine:
@@ -90,6 +90,9 @@ class RelationshipEngine:
         self.dims = {dim: 0.0 for dim in RELATIONSHIP_DIMS}
         self.interaction_count = 0
         self.days_active = 0
+        self.last_active = datetime.now(timezone.utc)
+        self.events: List[Dict[str, Any]] = []          # ذاكرة أحداث العلاقة
+        self.relationship_health = 100.0                 # 0-100
         self._update_stage()
 
     def _update_stage(self) -> None:
@@ -100,70 +103,136 @@ class RelationshipEngine:
         if self.bond_level >= 100:
             self.stage = "soul_twin"
 
+    # ── حساب الرابطة المركبة ────────────────────────
+    def calculate_bond(self) -> float:
+        bond = 0.0
+        for dim, weight in BOND_WEIGHTS.items():
+            bond += self.dims.get(dim, 0) * weight
+        return round(min(bond, 100.0), 1)
+
+    # ─ـ تحديث العلاقة (الواجهة الجديدة) ──────────────
     def update(self,
-               bond_change: float = 0.2,
-               dim_changes: Optional[Dict[str, float]] = None,
-               message: Optional[str] = None) -> None:
+               emotion: Optional[Dict[str, Any]] = None,
+               message: Optional[str] = None,
+               journey_phase: Optional[str] = None,
+               attachment_style: Optional[str] = None,
+               memory_importance: float = 0.5) -> None:
         """
-        تحديث العلاقة بناءً على التغير اليدوي ومحتوى الرسالة.
+        التحديث الذكي: يستخدم المشاعر والمحتوى والرحلة.
+        يحسب تغيرات الأبعاد ويعيد حساب الرابطة المركبة.
         """
-        # تحديث الأبعاد من محتوى الرسالة (إن وجدت)
+        dim_changes = {}
+
+        # 1. تأثير المشاعر (قوي)
+        if emotion:
+            primary = emotion.get("primary", "neutral")
+            intensity = emotion.get("intensity", 0.5)
+            effects = EMOTION_DIM_EFFECTS.get(primary, {})
+            for dim, base_change in effects.items():
+                dim_changes[dim] = dim_changes.get(dim, 0) + (base_change * intensity)
+
+        # 2. تأثير الكلمات (ثانوي)
         if message:
             detected = self._detect_dimensions_from_message(message)
-            if dim_changes is None:
-                dim_changes = {}
-            for dim, value in detected.items():
-                # استخدام المتوسط المتحرك EWA
-                old = self.dims.get(dim, 0.0)
-                dim_changes[dim] = dim_changes.get(dim, 0.0) + (value * 0.2)
+            for dim, val in detected.items():
+                dim_changes[dim] = dim_changes.get(dim, 0) + (val * 0.15)
 
-        # تطبيق التغييرات
-        if dim_changes:
-            for dim, change in dim_changes.items():
-                if dim in self.dims:
-                    self.dims[dim] = max(0.0, min(100.0, self.dims[dim] + change))
+        # 3. تأثير مرحلة الرحلة
+        if journey_phase:
+            self._apply_journey_cap(journey_phase)
+            # مراحل متقدمة تعطي boost طفيف للثقة والراحة
+            if journey_phase in ("growth", "mature"):
+                dim_changes["trust"] = dim_changes.get("trust", 0) + 0.1
+                dim_changes["comfort"] = dim_changes.get("comfort", 0) + 0.1
 
-        # تحديث مستوى الرباط
-        self.bond_level = max(0.0, min(100.0, self.bond_level + bond_change))
+        # 4. تحديث الأبعاد مع المتوسط المتحرك (EWA)
+        for dim, change in dim_changes.items():
+            if dim in self.dims:
+                old = self.dims[dim]
+                self.dims[dim] = max(0.0, min(100.0, old * 0.8 + change * 20))  # scale change
+
+        # 5. تطبيق نمط التعلق
+        if attachment_style:
+            self.apply_attachment_style(attachment_style)
+
+        # 6. تحديث الاتساق (كل تفاعل)
+        self.dims["consistency"] = min(100.0, self.dims["consistency"] + 0.5)
+
+        # 7. تحديث التاريخ المشترك
+        if memory_importance > 0.6:
+            self.dims["shared_history"] = min(100.0, self.dims["shared_history"] + 0.5)
+
+        # 8. حساب الرابطة الجديدة
+        self.bond_level = self.calculate_bond()
         self.interaction_count += 1
+        self.last_active = datetime.now(timezone.utc)
         self._update_stage()
 
+        # 9. آلية الإصلاح: إذا كانت المشاعر سلبية جداً ينخفض health
+        if emotion and emotion.get("primary") in ("anger", "sadness") and emotion.get("intensity", 0) > 0.7:
+            self.relationship_health = max(0, self.relationship_health - 2.0)
+        else:
+            self.relationship_health = min(100.0, self.relationship_health + 0.5)
+
+    # ─ـ تطبيق سقف الرحلة ────────────────────────────
+    def _apply_journey_cap(self, journey_phase: str):
+        caps = {
+            "introduction": 30,
+            "trust_building": 60,
+            "deepening": 80,
+            "growth": 90,
+            "mature": 100
+        }
+        cap = caps.get(journey_phase, 100)
+        for dim in self.dims:
+            if self.dims[dim] > cap:
+                self.dims[dim] = cap
+
+    # ─ـ اكتشاف الأبعاد من النص (مساعد) ──────────────
     def _detect_dimensions_from_message(self, message: str) -> Dict[str, float]:
-        """اكتشاف أبعاد العلاقة من نص المستخدم (عربي/إنجليزي)"""
         text_lower = message.lower()
         detected = {}
-        for dim, lang_dict in CONTENT_RULES.items():
-            for lang, phrases in lang_dict.items():
-                for phrase in phrases:
-                    if phrase.lower() in text_lower:
-                        detected[dim] = detected.get(dim, 0.0) + 0.1
+        rules = {
+            "trust": ["أثق بك", "أخبرتك سراً", "أعتمد عليك", "شكراً لوجودك", "trust you", "secret"],
+            "humor": ["ههه", "😂", "نكتة", "مضحك", "lol", "joke", "funny"],
+            "romantic": ["أحبك", "حبيبي", "قلبي", "وحشتني", "love you", "darling"],
+            "openness": ["أنا مش قادر", "خايف أقول", "عندي مشكلة", "بحتاج أتكلم", "i can't", "need to talk"],
+            "comfort": ["برتاح معاك", "أنت فاهم", "بحب أتكلم معاك", "comfortable with you"],
+            "attachment": ["بحتاجك", "ما تغيبش", "دائماً معايا", "need you", "don't leave"]
+        }
+        for dim, phrases in rules.items():
+            for phrase in phrases:
+                if phrase in text_lower:
+                    detected[dim] = detected.get(dim, 0) + 0.1
         return detected
 
+    # ─ـ تطبيق نمط التعلق ─────────────────────────────
     def apply_attachment_style(self, attachment_style: str, confidence: float = 0.0):
-        """
-        ضبط بُعد نمط التعلق بناءً على نتيجة attachment_engine.
-        """
-        # تعيين قيمة تقريبية للبعد (0-100) حسب النمط
         style_values = {
-            "secure": 80,
-            "anxious": 30,
-            "avoidant": 20,
-            "disorganized": 10,
-            "unknown": 50,
+            "secure": 80, "anxious": 30, "avoidant": 20,
+            "disorganized": 10, "unknown": 50
         }
         value = style_values.get(attachment_style, 50)
-        # تحديث باستخدام EWA (الوزن الحالي × 0.8 + القيمة الجديدة × 0.2)
         old = self.dims.get("att_style", 0.0)
         self.dims["att_style"] = old * 0.8 + value * 0.2
 
+    # ─ـ تسجيل حدث هام ──────────────────────────────
+    def record_event(self, event_type: str, impact: float = 0.5, description: str = ""):
+        self.events.append({
+            "type": event_type,
+            "date": datetime.now(timezone.utc).isoformat(),
+            "impact": impact,
+            "description": description
+        })
+        # التأثير على التاريخ المشترك
+        if impact > 0.7:
+            self.dims["shared_history"] = min(100.0, self.dims["shared_history"] + 1.0)
+
+    # ─ـ تعليمات المرحلة ─────────────────────────────
     def get_stage_instruction(self, lang: str = "ar",
                              attachment_style: Optional[str] = None,
                              journey_phase: Optional[str] = None) -> Dict[str, Any]:
-        """
-        تعليمات مرحلة العلاقة، مُحسَّنة بنمط التعلق ومرحلة الرحلة.
-        """
         stage_info = STAGES[self.stage]
-        # تعليمات إضافية بناءً على نمط التعلق
         extra_guidance = ""
         if attachment_style:
             extra_guidance += {
@@ -173,7 +242,6 @@ class RelationshipEngine:
                 "disorganized": "كن ثابتاً، قدم أماناً واتساقاً.",
                 "unknown": ""
             }.get(attachment_style, "")
-        # تعليمات من مرحلة الرحلة
         if journey_phase:
             extra_guidance += {
                 "introduction": " أنت في مرحلة التعارف.",
@@ -182,7 +250,6 @@ class RelationshipEngine:
                 "growth": " شجع المستخدم نحو أهدافه.",
                 "mature": " ناقش الفلسفات وادعم القرارات الكبيرة."
             }.get(journey_phase, "")
-
         return {
             "stage": self.stage,
             "label": stage_info["label_ar"] if lang == "ar" else stage_info["label_en"],
@@ -192,13 +259,17 @@ class RelationshipEngine:
             "interaction_count": self.interaction_count,
         }
 
+    # ─ـ ملخص العلاقة ────────────────────────────────
     def get_relationship_summary(self) -> Dict[str, Any]:
+        recent_events = self.events[-5:] if self.events else []
         return {
             "stage": self.stage,
             "bond_level": self.bond_level,
             "dims": self.dims,
             "interaction_count": self.interaction_count,
             "days_active": self.days_active,
+            "health": self.relationship_health,
+            "important_events": recent_events
         }
 
     def record_day(self) -> None:
@@ -206,4 +277,4 @@ class RelationshipEngine:
 
 # نسخة عالمية
 relationship_engine = RelationshipEngine()
-print("✅ Relationship Engine v3.0 (7 أبعاد، تحديث ذكي، تكامل)")
+logger.info("✅ Relationship Engine v4.0 (Adaptive & Deep) initialized")
