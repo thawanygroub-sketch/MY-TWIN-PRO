@@ -218,7 +218,7 @@ async def root():
     return {"status": "ok", "version": "10.1.0"}
 
 @app.get("/api/proactive/check")
-async def proactive_check(uid: str = None):
+async def proactive_check(uid: str = Depends(get_user)):
     try:
         should_send = proactive_engine.should_send_proactive(uid)
         return {"should_send": should_send, "user_id": uid}
@@ -300,7 +300,7 @@ async def generate_image(prompt: str = "A beautiful sunset", uid: str = Depends(
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/proactive/check")
-async def proactive_check(uid: str = None):
+async def proactive_check(uid: str = Depends(get_user)):
     try:
         should_send = proactive_engine.should_send_proactive(uid)
         return {"should_send": should_send, "user_id": uid}
