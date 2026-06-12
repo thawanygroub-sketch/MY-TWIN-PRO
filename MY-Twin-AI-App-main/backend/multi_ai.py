@@ -14,7 +14,7 @@ class AIUnavailable(Exception):
 class MultiAIClient:
     def __init__(self):
         # Gemini 3.1 Flash Lite (1000 طلب/يوم مجاناً)
-        gemini_key = os.getenv("GEMINI_API_KEY")
+        gemini_key = self._get_balanced_key("gemini")
         self.gemini_model = None
         if gemini_key:
             try:

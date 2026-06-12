@@ -286,7 +286,7 @@ async def generate_image(prompt: str = "A beautiful sunset", uid: str = Depends(
     """توليد صورة باستخدام Gemini Image API"""
     try:
         import google.generativeai as genai
-        image_key = os.getenv("GEMINI_IMAGE_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+        image_key = os.getenv("GEMINI_IMAGE_API_KEY", self._get_balanced_key("gemini"))
         if not image_key:
             return {"status": "error", "message": "Image API key not configured"}
         genai.configure(api_key=image_key)
