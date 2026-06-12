@@ -38,7 +38,7 @@ export type JourneyPhase = 'introduction' | 'trust_building' | 'deepening' | 'gr
 export type AttachmentStyle = 'secure' | 'anxious' | 'avoidant' | 'disorganized' | 'unknown';
 export type VoicePersonality = 'mentor' | 'friend' | 'romantic' | 'energetic' | 'calm';
 
-interface TwinStore {
+export interface TwinStore {
   userId: string; setAuth: (userId: string) => void;
   twinName: string; setTwinName: (name: string) => void;
   twinGender: TwinGender; setTwinGender: (gender: TwinGender) => void;

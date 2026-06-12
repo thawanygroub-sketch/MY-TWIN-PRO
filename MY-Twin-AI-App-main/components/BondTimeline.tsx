@@ -1,8 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-// ✅ تم تصحيح المسار إلى ../../ واستيراد النوع بشكل صحيح
-import { useTwinStore } from '../../store/useTwinStore';
-import type { TwinStore, RelationshipDims } from '../../store/useTwinStore';
+import { useTwinStore } from '../store/useTwinStore';
+import type { TwinStore, RelationshipDims } from '../store/useTwinStore';
 import { Shield, Heart, Users, Brain, Smile, Handshake } from 'lucide-react-native';
 
 const STAGES = [
@@ -36,7 +35,6 @@ function getRelationshipSummary(bondLevel: number, dims: any, isAr: boolean) {
 }
 
 export default function BondTimeline() {
-  // ✅ تم إضافة النوع TwinStore للوسيط s
   const bondLevel = useTwinStore((s: TwinStore) => s.bondLevel);
   const dims = useTwinStore((s: TwinStore) => s.relationshipDims);
   const lang = useTwinStore((s: TwinStore) => s.lang);
@@ -83,11 +81,11 @@ export default function BondTimeline() {
       <Text style={[styles.dimTitle, { color: isDark ? '#FFF' : '#1A1A1A' }]}>
         {isAr ? 'أبعاد العلاقة' : 'Relationship Dimensions'}
       </Text>
-      {DIMENSIONS.map((d) => {
+      {DIMENSIONS.map((d, index) => {
         const Icon = d.icon;
         const value = (dims as any)[d.key] ?? 0;
         return (
-          <View key={d.key} style={styles.dimRow}>
+          <View key={String(d.key)} style={styles.dimRow}>
             <Icon size={16} stroke={d.color} />
             <Text style={[styles.dimLabel, { color: isDark ? '#FFF' : '#1A1A1A' }]}>
               {isAr ? d.label_ar : d.label_en}
