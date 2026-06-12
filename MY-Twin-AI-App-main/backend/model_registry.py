@@ -20,27 +20,38 @@ MODELS: Dict[str, Dict[str, List[str]]] = {
     },
     "openrouter": {
         "primary": ["meta-llama/llama-4-maverick"],
-        "fallback": ["deepseek/deepseek-v4-flash", "moonshotai/kimi-k2.6:free", "google/gemma-2-9b-it:free", "mistralai/mistral-small-3.1-24b-instruct"],
-        "all": ["meta-llama/llama-4-maverick", "deepseek/deepseek-v4-flash", "moonshotai/kimi-k2.6:free", "google/gemma-2-9b-it:free", "mistralai/mistral-small-3.1-24b-instruct"]
+        "fallback": [
+            "deepseek/deepseek-v4-flash",
+            "moonshotai/kimi-k2.6:free",
+            "google/gemma-2-9b-it:free",
+            "mistralai/mistral-small-3.1-24b-instruct"
+        ],
+        "all": [
+            "meta-llama/llama-4-maverick",
+            "deepseek/deepseek-v4-flash",
+            "moonshotai/kimi-k2.6:free",
+            "google/gemma-2-9b-it:free",
+            "mistralai/mistral-small-3.1-24b-instruct"
+        ]
     },
     "gemini": {
-        "primary": ["gemini-3.1-flash-lite"],
-        "all": ["gemini-3.1-flash-lite"]
+        "primary": ["gemini-2.0-flash"],
+        "all": ["gemini-2.0-flash"]
     }
 }
 
 # توزيع المهام على النماذج
 TASK_CHAINS: Dict[str, List[str]] = {
-    "general":        ["groq/llama-3.3-70b-versatile", "openrouter/meta-llama/llama-4-maverick", "openrouter/moonshotai/kimi-k2.6:free", "gemini/gemini-3.1-flash-lite"],
-    "emotional":      ["openrouter/meta-llama/llama-4-maverick", "groq/llama-3.3-70b-versatile", "openrouter/moonshotai/kimi-k2.6:free", "gemini/gemini-3.1-flash-lite"],
-    "coding":         ["openrouter/deepseek/deepseek-v4-flash", "groq/llama-3.3-70b-versatile", "gemini/gemini-3.1-flash-lite"],
-    "deep_reasoning": ["openrouter/deepseek/deepseek-v4-flash", "openrouter/moonshotai/kimi-k2.6:free", "groq/llama-3.3-70b-versatile", "gemini/gemini-3.1-flash-lite"],
-    "multilingual":   ["openrouter/moonshotai/kimi-k2.6:free", "openrouter/meta-llama/llama-4-maverick", "groq/llama-3.3-70b-versatile", "gemini/gemini-3.1-flash-lite"],
-    "planning":       ["openrouter/moonshotai/kimi-k2.6:free", "openrouter/meta-llama/llama-4-maverick", "groq/llama-3.3-70b-versatile", "gemini/gemini-3.1-flash-lite"],
-    "coaching":       ["groq/llama-3.3-70b-versatile", "openrouter/meta-llama/llama-4-maverick", "openrouter/moonshotai/kimi-k2.6:free", "gemini/gemini-3.1-flash-lite"],
-    "dream":          ["openrouter/meta-llama/llama-4-maverick", "groq/llama-3.3-70b-versatile", "openrouter/google/gemma-2-9b-it:free", "gemini/gemini-3.1-flash-lite"],
-    "search":         ["openrouter/deepseek/deepseek-v4-flash", "groq/llama-3.3-70b-versatile", "gemini/gemini-3.1-flash-lite"],
-    "agent":          ["groq/gemma2-9b-it", "groq/llama-3.3-70b-versatile", "gemini/gemini-3.1-flash-lite"],
+    "general":        ["groq/llama-3.3-70b-versatile", "openrouter/meta-llama/llama-4-maverick", "openrouter/moonshotai/kimi-k2.6:free", "gemini/gemini-2.0-flash"],
+    "emotional":      ["openrouter/meta-llama/llama-4-maverick", "groq/llama-3.3-70b-versatile", "openrouter/moonshotai/kimi-k2.6:free", "gemini/gemini-2.0-flash"],
+    "coding":         ["openrouter/deepseek/deepseek-v4-flash", "groq/llama-3.3-70b-versatile", "gemini/gemini-2.0-flash"],
+    "deep_reasoning": ["openrouter/deepseek/deepseek-v4-flash", "openrouter/moonshotai/kimi-k2.6:free", "groq/llama-3.3-70b-versatile", "gemini/gemini-2.0-flash"],
+    "multilingual":   ["openrouter/moonshotai/kimi-k2.6:free", "openrouter/meta-llama/llama-4-maverick", "groq/llama-3.3-70b-versatile", "gemini/gemini-2.0-flash"],
+    "planning":       ["openrouter/moonshotai/kimi-k2.6:free", "openrouter/meta-llama/llama-4-maverick", "groq/llama-3.3-70b-versatile", "gemini/gemini-2.0-flash"],
+    "coaching":       ["groq/llama-3.3-70b-versatile", "openrouter/meta-llama/llama-4-maverick", "openrouter/moonshotai/kimi-k2.6:free", "gemini/gemini-2.0-flash"],
+    "dream":          ["openrouter/meta-llama/llama-4-maverick", "groq/llama-3.3-70b-versatile", "openrouter/mistralai/mistral-small-3.1-24b-instruct", "gemini/gemini-2.0-flash"],
+    "search":         ["openrouter/deepseek/deepseek-v4-flash", "groq/llama-3.3-70b-versatile", "gemini/gemini-2.0-flash"],
+    "agent":          ["groq/gemma2-9b-it", "groq/llama-3.3-70b-versatile", "gemini/gemini-2.0-flash"],
 }
 
 # تكاليف تقديرية (لكل 1000 توكن)
@@ -52,7 +63,7 @@ MODEL_COSTS: Dict[str, float] = {
     "openrouter/moonshotai/kimi-k2.6:free": 0.0,
     "openrouter/google/gemma-2-9b-it:free": 0.0,
     "openrouter/mistralai/mistral-small-3.1-24b-instruct": 0.0,
-    "gemini/gemini-3.1-flash-lite": 0.0,
+    "gemini/gemini-2.0-flash": 0.0,
 }
 
 # أوقات استجابة متوقعة (تقديرية بالثواني)
@@ -70,5 +81,8 @@ FALLBACK_MESSAGES = [
     "أفهم ما تمر به... أنا بجانبك 💜",
     "روحك حلوة... أخبرني المزيد 🌸",
 ]
+
+# رسالة الضغط التقني (للتوافق)
+TECHNICAL_ERROR_MESSAGE = "أواجه ضغطاً تقنياً 💜"
 
 print("✅ Model Registry جاهز")

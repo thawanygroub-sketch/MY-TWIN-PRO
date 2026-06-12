@@ -13,21 +13,18 @@ class AIUnavailable(Exception):
 
 class MultiAIClient:
     def __init__(self):
-        # Gemini 3.1 Flash Lite (1000 طلب/يوم مجاناً)
-        gemini_key = self._get_balanced_key("gemini")
+        gemini_key = os.getenv("GEMINI_API_KEY")
         self.gemini_model = None
         if gemini_key:
             try:
                 genai.configure(api_key=gemini_key)
-                self.gemini_model = genai.GenerativeModel("gemini-3.1-flash-lite")
+                self.gemini_model = genai.GenerativeModel("gemini-2.5-flash")
             except Exception as e:
                 logger.error(f"Gemini init failed: {e}")
 
-        # Groq
         groq_key = os.getenv("GROQ_API_KEY")
         self.groq_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key) if groq_key else None
 
-        # OpenRouter
         or_key = os.getenv("OPENROUTER_API_KEY")
         self.or_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=or_key) if or_key else None
 
@@ -94,9 +91,10 @@ class MultiAIClient:
             parts = model_spec.split("/", 1)
             provider = parts[0]
             model = parts[1]
-            max_t = max(60, min(150, len(prompt) // 2))
+            max_t = max(60, min(300, len(prompt) // 2))
             timeout = int(MODEL_LATENCY_ESTIMATE.get(provider, 3.0) * 2)
-            tasks.append(self._call_model(provider, model, prompt, max_t, timeout))
+            task = asyncio.create_task(self._call_model(provider, model, prompt, max_t, timeout))
+            tasks.append(task)
 
         pending = set(tasks)
         while pending:
@@ -154,18 +152,3 @@ class MultiAIClient:
         except Exception as e:
             logger.warning(f"Image generation failed: {e}")
         return None
-
-    def _get_balanced_key(self, provider: str) -> Optional[str]:
-        keys_map = {
-            "groq": ["GROQ_API_KEY", "GROQ_API_KEY_2"],
-            "openrouter": ["OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2"],
-            "gemini": ["GEMINI_API_KEY", "GEMINI_API_KEY_2"],
-        }
-        key_names = keys_map.get(provider, [])
-        valid_keys = [os.getenv(k) for k in key_names if os.getenv(k)]
-        if not valid_keys:
-            return None
-        if len(valid_keys) == 1:
-            return valid_keys[0]
-        index = hash(str(time.time())) % len(valid_keys)
-        return valid_keys[index]
