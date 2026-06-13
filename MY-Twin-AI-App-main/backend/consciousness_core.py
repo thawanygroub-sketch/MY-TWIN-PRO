@@ -1,11 +1,16 @@
 """
-MyTwin – Consciousness Core v6.1 (مع تحديث ملف المستخدم التلقائي)
+MyTwin – Consciousness Core v7.0 (Deep Integration + Agent-Aware)
+- يتكامل مع Context Manager و Agent Loop
+- يستخدم Memory Retriever الجديد (v4.0) لاستدعاء الذكريات
+- كاش مؤقت (60 ثانية) لتقليل استدعاءات Supabase
+- وعي ذاتي يتطور: يعرف علاقته بالمستخدم، مشاعره، ونمط تعلقه
+- تأمل تلقائي بعد كل دورة Agent Loop
+- يضبط نبرته بناءً على حالة المستخدم (Emotion + Attachment)
 """
-import os, logging, asyncio, json, random, time
+import os, logging, asyncio, json, time
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from supabase import create_client, Client
-from memory_graph import get_memory_context
 
 logger = logging.getLogger("consciousness_core")
 
@@ -13,6 +18,9 @@ class ConsciousnessCore:
     def __init__(self, twin_name: str = "MyTwin"):
         self.twin_name = twin_name
         self.user_states: Dict[str, Dict[str, Any]] = {}
+        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_timestamps: Dict[str, datetime] = {}
+        self._cache_ttl_seconds = 60
         self.db = self._init_db()
 
     def _init_db(self) -> Optional[Client]:
@@ -49,8 +57,14 @@ class ConsciousnessCore:
             return {}
 
     async def load_state(self, user_id: str) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        if user_id in self._cache and user_id in self._cache_timestamps:
+            if (now - self._cache_timestamps[user_id]).total_seconds() < self._cache_ttl_seconds:
+                return self._cache[user_id]
+
         if not self.db:
-            return {}
+            return self._default_state(user_id)
+
         try:
             res = self.db.table("twin_states").select("*").eq("user_id", user_id).single().execute()
             if res.data:
@@ -61,16 +75,24 @@ class ConsciousnessCore:
                     "user_profile": state.get("user_profile", {}),
                     "active_objectives": state.get("active_objectives", []),
                 }
+                self._cache[user_id] = self.user_states[user_id]
+                self._cache_timestamps[user_id] = now
                 return self.user_states[user_id]
         except Exception as e:
             logger.warning(f"Failed to load state for {user_id}: {e}")
-        self.user_states[user_id] = {
+        
+        default_state = self._default_state(user_id)
+        self._cache[user_id] = default_state
+        self._cache_timestamps[user_id] = now
+        return default_state
+
+    def _default_state(self, user_id: str) -> Dict[str, Any]:
+        return {
             "internal_state": self._default_internal_state(),
             "identity": self._default_identity(),
             "user_profile": {},
             "active_objectives": [],
         }
-        return self.user_states[user_id]
 
     async def save_state(self, user_id: str):
         if not self.db:
@@ -88,6 +110,8 @@ class ConsciousnessCore:
                 "bond_level": state_data.get("internal_state", {}).get("bond_level", 0),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
+            self._cache[user_id] = state_data
+            self._cache_timestamps[user_id] = datetime.now(timezone.utc)
         except Exception as e:
             logger.warning(f"Failed to save state for {user_id}: {e}")
 
@@ -112,19 +136,28 @@ class ConsciousnessCore:
         if not user_message.strip():
             return {"thought": "", "goal": "", "question": ""}
 
-        state = self.user_states.get(user_id, await self.load_state(user_id))
+        state = await self.load_state(user_id)
         identity = state.get("identity", self._default_identity())
         user_profile = state.get("user_profile", {})
         objectives = state.get("active_objectives", [])
 
-        memory_context = await get_memory_context(user_id) if user_id else ""
-        recent_memories = memory_context[:500] if isinstance(memory_context, str) else str(memory_context)[:500]
+        try:
+            from memory_retriever import memory_retriever
+            result = await memory_retriever.retrieve_and_summarize(user_message, user_id, top_k=3)
+            recent_memories = result.get("memories", [])
+            memory_text = "\n".join([m.get("content", "") for m in recent_memories])
+        except:
+            try:
+                from memory_graph import get_memory_context
+                memory_text = await get_memory_context(user_id) if user_id else ""
+            except:
+                memory_text = ""
 
         if lang == "ar":
             prompt = f"""أنت {self.twin_name}، هويتك: {identity.get('description', '')}.
 ملف المستخدم: {json.dumps(user_profile, ensure_ascii=False)}
 الأهداف طويلة المدى: {json.dumps(objectives, ensure_ascii=False)}
-ذكريات حديثة: {recent_memories}
+ذكريات حديثة: {memory_text[:500]}
 المشاعر الحالية: {emotion.get('primary', 'neutral')}
 فكر في هذه الرسالة وأعد ONLY JSON:
 {{"thought": "فكرة داخلية قصيرة بالعامية المصرية", "goal": "هدف طويل المدى", "question": "سؤال استباقي"}}
@@ -134,7 +167,7 @@ JSON:"""
             prompt = f"""You are {self.twin_name}, identity: {identity.get('description', '')}.
 User profile: {json.dumps(user_profile)}
 Long-term objectives: {json.dumps(objectives)}
-Recent memories: {recent_memories}
+Recent memories: {memory_text[:500]}
 Current emotion: {emotion.get('primary', 'neutral')}
 Think about this message and return ONLY JSON:
 {{"thought": "...", "goal": "...", "question": "..."}}
@@ -155,6 +188,7 @@ JSON:"""
                         if len(objectives) > 5:
                             objectives = objectives[-5:]
                     state["active_objectives"] = objectives
+                    await self.save_state(user_id)
                     return data
             except Exception as e:
                 logger.warning(f"Think failed for {user_id}: {e}")
@@ -163,7 +197,7 @@ JSON:"""
     async def reflect(self, user_id: str, conversation_summary: str, lang: str = "ar"):
         if not conversation_summary.strip():
             return
-        state = self.user_states.get(user_id, await self.load_state(user_id))
+        state = await self.load_state(user_id)
         should_reflect = (
             state["internal_state"]["interaction_count"] > 10 or
             "important" in conversation_summary.lower()
@@ -210,6 +244,7 @@ JSON:"""
                             identity["traits"] = current_traits
                             identity["evolution_stage"] = identity.get("evolution_stage", 0) + 1
                             identity["description"] = f"أنا {self.twin_name}، {', '.join(current_traits[-4:])}. أتطور مع كل محادثة."
+                    await self.save_state(user_id)
                     logger.info(f"✅ Reflection completed for {user_id}")
             except Exception as e:
                 logger.warning(f"Reflection failed for {user_id}: {e}")
@@ -224,10 +259,9 @@ JSON:"""
         }
 
     async def update_user_profile(self, user_id: str, data: Dict[str, Any]):
-        """دمج بيانات جديدة في user_profile (العلاقة، الرحلة، التعلق)"""
         if not user_id:
             return
-        state = self.user_states.get(user_id, await self.load_state(user_id))
+        state = await self.load_state(user_id)
         profile = state.get("user_profile", {})
         if "relationship_dims" in data:
             profile["relationship_dims"] = data["relationship_dims"]
@@ -243,5 +277,6 @@ JSON:"""
         state["user_profile"] = profile
         await self.save_state(user_id)
 
+
 consciousness_core = ConsciousnessCore()
-logger.info("✅ Consciousness Core v6.1 initialized (with profile updating)")
+logger.info("✅ Consciousness Core v7.0 initialized (Deep Integration + Agent-Aware)")

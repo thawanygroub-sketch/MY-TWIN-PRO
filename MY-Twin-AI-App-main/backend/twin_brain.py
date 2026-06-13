@@ -114,8 +114,25 @@ class TwinBrain:
             try:
                 if join_date:
                     journey_info = twin_journey.get_daily_activity(user_id, join_date)
+                
+                # ✅ استخدام Attachment Engine v2.0: تحليل عميق مع التاريخ العاطفي والذكريات
                 if recent_messages:
-                    attachment_info = await attachment_engine.detect_attachment_style(user_id, recent_messages)
+                    emotion_history = []
+                    if 'emotion' in dir() and emotion:
+                        emotion_history.append(emotion)
+                    
+                    memory_context_data = {
+                        "memories": full_context.get("memories", [])
+                    }
+                    
+                    attachment_info = await attachment_engine.detect_attachment_style(
+                        user_id=user_id,
+                        messages=recent_messages,
+                        emotion_history=emotion_history,
+                        memory_context=memory_context_data
+                    )
+                else:
+                    attachment_info = {"style": "unknown", "confidence": 0.0}
 
                 self.relationship.update(
                     emotion=emotion, message=message,
@@ -125,6 +142,7 @@ class TwinBrain:
                 )
             except Exception as e:
                 logger.warning(f"Relationship update failed: {e}")
+                attachment_info = {"style": "unknown", "confidence": 0.0}
 
         # 6. التخطيط (Reasoning Engine)
         plan = {}
@@ -172,6 +190,15 @@ class TwinBrain:
                     "label": "Friend", "bond_level": bond_level, "instruction": str(rel_stage)
                 }
 
+            # ✅ إضافة تعليمات نمط التعلق إلى العلاقة
+            if attachment_info and attachment_info.get("style") != "unknown":
+                att_style = attachment_info.get("style")
+                att_confidence = attachment_info.get("confidence", 0)
+                if att_confidence > 0.4:
+                    att_adjustments = attachment_engine.get_response_adjustments(att_style)
+                    relationship_for_prompt["attachment_style"] = att_style
+                    relationship_for_prompt["attachment_guidance"] = att_adjustments
+
             # تحضير السياق النهائي للـ Prompt
             formatted_context = context_manager.format_context_for_prompt(full_context)
             if tool_results:
@@ -184,7 +211,8 @@ class TwinBrain:
                 dialect={"dialect": dialect, "instruction": dialect_prompt},
                 user_id=user_id, journey_info=journey_info,
                 attachment_info=attachment_info,
-                response_adjustments={}, message=message,
+                response_adjustments=attachment_engine.get_response_adjustments(attachment_info.get("style", "unknown")),
+                message=message,
                 memory_context=formatted_context,
                 reasoning_result=plan,
                 consciousness_context=full_context.get("consciousness", {}),
@@ -241,7 +269,7 @@ class TwinBrain:
             except Exception as e:
                 logger.warning(f"Product recommender failed: {e}")
 
-        # تحديث الوعي (Consciousness)
+        # ✅ تحديث الوعي (Consciousness Core v7.0) مع بيانات التعلق والرحلة
         if user_id:
             try:
                 await self.consciousness.update_user_profile(user_id, {
@@ -254,7 +282,18 @@ class TwinBrain:
             except Exception as e:
                 logger.warning(f"Failed to update consciousness profile: {e}")
 
-        # 11. الإرجاع النهائي
+            # ✅ تأمل تلقائي بعد كل محادثة (بشكل تراكمي)
+            try:
+                if journey_info.get("phase") == "mature" or self.relationship.bond_level > 60:
+                    await self.consciousness.reflect(
+                        user_id=user_id,
+                        conversation_summary=message[:200],
+                        lang="ar"
+                    )
+            except Exception as e:
+                logger.warning(f"Consciousness reflection failed: {e}")
+
+        # 11. الإرجاع النهائي - الآن يتضمن attachment_style للواجهة الأمامية
         return {
             "reply": final_reply,
             "new_bond": self.relationship.bond_level,
