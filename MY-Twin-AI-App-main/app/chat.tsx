@@ -1,7 +1,7 @@
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, Modal, Animated, Alert, StatusBar,
-  Image, ActivityIndicator, Pressable, Dimensions, Share
+  Image, ActivityIndicator, Dimensions, Share
 } from 'react-native';
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,15 +12,19 @@ import * as Localization from 'expo-localization';
 import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../lib/supabase';
 import { useTwinStore, ChatMessage } from '../store/useTwinStore';
-import { sendChatFromStore, updateStoreFromResponse } from '../lib/api';
+import {
+  sendChatFromStore, updateStoreFromResponse,
+  fetchWeather, fetchYouTube, fetchSpotify, fetchNews, fetchCurrency
+} from '../lib/api';
 import SideMenu from '../components/SideMenu';
 import TypingIndicator from '../components/TypingIndicator';
 import {
   Menu, Send, X, Volume2, VolumeX, RotateCcw, Copy, Share2,
-  Camera, Image as ImageIcon, FileText, Search, Dumbbell, Moon, Brain
+  Camera, Image as ImageIcon, FileText, Search, Dumbbell, Moon,
+  Cloud, Music, Film, DollarSign, TrendingUp, Zap
 } from 'lucide-react-native';
-import { speakResponse } from '../utils/voice_engine';
 import Markdown from 'react-native-markdown-display';
+import { speakResponse } from '../utils/voice_engine';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const APP_ICON = require('../assets/icon.png');
@@ -32,7 +36,6 @@ const COLORS = {
     inputBg: '#F8F8F8', inputBorder: '#EFEFEF', sendActive: '#6B21A8',
     sendInactive: '#E0D9F5', addBtnBg: '#F3F0FF', addBtnBorder: '#E0D9F5',
     retryColor: '#EF4444', memoryBadgeBg: '#F3F0FF', memoryBadgeText: '#6B21A8',
-    emotionalTagBg: '#FFF3CD', emotionalTagText: '#856404',
   },
   dark: {
     bg: '#1A1A1A', headerBg: '#1A1A1A', border: '#333', text: '#FFF',
@@ -40,7 +43,6 @@ const COLORS = {
     inputBg: '#333', inputBorder: '#555', sendActive: '#6B21A8',
     sendInactive: '#3A3A3A', addBtnBg: '#2A2A2A', addBtnBorder: '#444',
     retryColor: '#EF4444', memoryBadgeBg: '#2A2A2A', memoryBadgeText: '#D8B4FE',
-    emotionalTagBg: '#3A2A1A', emotionalTagText: '#FFD700',
   },
 };
 
@@ -50,17 +52,10 @@ const MarkdownRenderer = memo(({ content, isDark }: { content: string; isDark: b
     heading1: { fontSize: 20, fontWeight: 'bold', marginBottom: 8, color: isDark ? '#FFF' : '#1A1A1A' },
     heading2: { fontSize: 18, fontWeight: 'bold', marginBottom: 6, color: isDark ? '#FFF' : '#1A1A1A' },
     heading3: { fontSize: 16, fontWeight: 'bold', marginBottom: 4, color: isDark ? '#FFF' : '#1A1A1A' },
-    list_item: { marginBottom: 4 },
-    bullet_list: { marginBottom: 8 },
-    ordered_list: { marginBottom: 8 },
-    table: { marginBottom: 8, borderWidth: 1, borderColor: isDark ? '#444' : '#E0E0E0' },
-    th: { padding: 6, backgroundColor: isDark ? '#333' : '#F5F5F5', fontWeight: 'bold' },
-    td: { padding: 6, borderTopWidth: 1, borderColor: isDark ? '#444' : '#E0E0E0' },
     code_inline: { backgroundColor: isDark ? '#333' : '#F0F0F0', color: isDark ? '#FFF' : '#333', paddingHorizontal: 6, borderRadius: 4 },
     code_block: { backgroundColor: isDark ? '#222' : '#F0F0F0', padding: 10, borderRadius: 8, marginBottom: 8 },
-    blockquote: { borderLeftWidth: 3, borderLeftColor: '#6B21A8', paddingLeft: 10, marginBottom: 8, backgroundColor: isDark ? '#2A2A2A' : '#F9F9F9' },
+    blockquote: { borderLeftWidth: 3, borderLeftColor: '#6B21A8', paddingLeft: 10, marginBottom: 8 },
     strong: { fontWeight: 'bold' },
-    em: { fontStyle: 'italic' },
     link: { color: '#6B21A8' },
   };
   return <Markdown style={markdownStyles}>{content}</Markdown>;
@@ -82,75 +77,82 @@ const TwinBubble = memo(({ item, isLast, pulseAnim, isDark, onCopy, onRetry, onR
   item: ChatMessage; isLast: boolean; pulseAnim: Animated.Value; isDark: boolean;
   onCopy: (text: string) => void; onRetry: (msg: ChatMessage) => void;
   onRegenerate: (msg: ChatMessage) => void;
-}) => {
-  const emotionEmoji: Record<string, string> = {
-    joy: '😊', sadness: '😢', anger: '😠', fear: '😨', love: '❤️', surprise: '😮', neutral: '😌'
-  };
-  return (
-    <View style={styles.twinRow}>
-      <Animated.View style={{ transform: [{ scale: isLast ? pulseAnim : 1 }] }}>
-        <Image source={APP_ICON} style={styles.avatar} />
-      </Animated.View>
-      <View style={styles.twinContent}>
-        {item.memoryRecall && (
-          <View style={[styles.memoryBadge, { backgroundColor: isDark ? COLORS.dark.memoryBadgeBg : COLORS.light.memoryBadgeBg }]}>
-            <Brain size={14} stroke={isDark ? COLORS.dark.memoryBadgeText : COLORS.light.memoryBadgeText} />
-            <Text style={[styles.memoryBadgeText, { color: isDark ? COLORS.dark.memoryBadgeText : COLORS.light.memoryBadgeText }]}>Memory Recall</Text>
-          </View>
-        )}
-        {item.emotion && (
-          <View style={[styles.emotionTag, { backgroundColor: isDark ? COLORS.dark.emotionalTagBg : COLORS.light.emotionalTagBg }]}>
-            <Text style={[styles.emotionTagText, { color: isDark ? COLORS.dark.emotionalTagText : COLORS.light.emotionalTagText }]}>
-              {emotionEmoji[item.emotion] || '😌'} {item.emotion}
-            </Text>
-          </View>
-        )}
-        <MarkdownRenderer content={item.content} isDark={isDark} />
-        <View style={styles.actionRow}>
-          <TouchableOpacity onPress={() => onCopy(item.content)} style={styles.actionBtn}>
-            <Copy size={16} stroke={isDark ? '#999' : '#666'} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => Share.share({ message: item.content })} style={styles.actionBtn}>
-            <Share2 size={16} stroke={isDark ? '#999' : '#666'} />
-          </TouchableOpacity>
-          {isLast && (
-            <TouchableOpacity onPress={() => onRegenerate(item)} style={styles.actionBtn}>
-              <RotateCcw size={16} stroke={isDark ? '#999' : '#666'} />
-            </TouchableOpacity>
-          )}
-          <Text style={[styles.timestamp, { color: isDark ? '#999' : '#666', marginLeft: 4 }]}>
-            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
+}) => (
+  <View style={styles.twinRow}>
+    <Animated.View style={{ transform: [{ scale: isLast ? pulseAnim : 1 }] }}>
+      <Image source={APP_ICON} style={styles.avatar} />
+    </Animated.View>
+    <View style={styles.twinContent}>
+      {item.memoryRecall && (
+        <View style={[styles.memoryBadge, { backgroundColor: isDark ? COLORS.dark.memoryBadgeBg : COLORS.light.memoryBadgeBg }]}>
+          <Zap size={14} stroke={isDark ? COLORS.dark.memoryBadgeText : COLORS.light.memoryBadgeText} />
+          <Text style={[styles.memoryBadgeText, { color: isDark ? COLORS.dark.memoryBadgeText : COLORS.light.memoryBadgeText }]}>Memory</Text>
         </View>
-        {item.failed && (
-          <TouchableOpacity onPress={() => onRetry(item)} style={styles.retryBtn}>
-            <RotateCcw size={14} stroke="#EF4444" />
-            <Text style={styles.retryText}>Retry</Text>
+      )}
+      <MarkdownRenderer content={item.content} isDark={isDark} />
+      <View style={styles.actionRow}>
+        <TouchableOpacity onPress={() => onCopy(item.content)} style={styles.actionBtn}>
+          <Copy size={16} stroke={isDark ? '#999' : '#666'} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => Share.share({ message: item.content })} style={styles.actionBtn}>
+          <Share2 size={16} stroke={isDark ? '#999' : '#666'} />
+        </TouchableOpacity>
+        {isLast && (
+          <TouchableOpacity onPress={() => onRegenerate(item)} style={styles.actionBtn}>
+            <RotateCcw size={16} stroke={isDark ? '#999' : '#666'} />
           </TouchableOpacity>
         )}
+        <Text style={[styles.timestamp, { color: isDark ? '#999' : '#666', marginLeft: 4 }]}>
+          {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
       </View>
+      {item.failed && (
+        <TouchableOpacity onPress={() => onRetry(item)} style={styles.retryBtn}>
+          <RotateCcw size={14} stroke="#EF4444" />
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  </View>
+));
+
+const EnergyCircle = memo(({ energy, isDark }: { energy: number; isDark: boolean }) => {
+  const color = energy > 60 ? '#10B981' : energy > 25 ? '#F59E0B' : '#EF4444';
+  const size = 40;
+  const strokeWidth = 4;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const progress = Math.max(0, Math.min(energy, 100)) / 100;
+
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <View style={{ width: size, height: size }}>
+        <View style={{ position: 'absolute', width: size, height: size, borderRadius: size / 2, borderWidth: strokeWidth, borderColor: isDark ? '#333' : '#E5E7EB' }} />
+        <View style={{ position: 'absolute', width: size, height: size, borderRadius: size / 2, borderWidth: strokeWidth, borderColor: 'transparent', borderTopColor: color, borderRightColor: color, transform: [{ rotate: `${progress * 360}deg` }] }} />
+        <View style={{ position: 'absolute', width: size, height: size, borderRadius: size / 2, borderWidth: strokeWidth, borderColor: 'transparent', borderBottomColor: color, borderLeftColor: color, transform: [{ rotate: `${progress * 360}deg` }] }} />
+        <View style={{ position: 'absolute', width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+          <Zap size={14} stroke={color} />
+        </View>
+      </View>
+      <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? '#CCC' : '#666', marginTop: 2 }}>{energy}%</Text>
     </View>
   );
 });
-
 export default function Chat() {
   const insets = useSafeAreaInsets();
   const {
     userId, twinName, twinGender, tier, chatHistory, addMessage,
-    calmMode, triggerHaptic, lang, theme, setTwinName,
-    setTwinGender, openMenu, closeMenu, voiceEnabled, setVoiceEnabled,
-    setEnergy, bondLevel, relationshipDims, journeyPhase, attachmentStyle,
-    twinStyle, replyStyle, setThinking, setThinkingStage
+    triggerHaptic, lang, theme, setTwinName, setTwinGender,
+    openMenu, closeMenu, voiceEnabled, setVoiceEnabled,
+    setEnergy, bondLevel, setThinking, setThinkingStage
   } = useTwinStore((s) => ({
     userId: s.userId, twinName: s.twinName, twinGender: s.twinGender, tier: s.tier,
     chatHistory: s.chatHistory, addMessage: s.addMessage,
-    calmMode: s.calmMode, triggerHaptic: s.triggerHaptic, lang: s.lang, theme: s.theme,
+    triggerHaptic: s.triggerHaptic, lang: s.lang, theme: s.theme,
     setTwinName: s.setTwinName, setTwinGender: s.setTwinGender,
     openMenu: s.openMenu, closeMenu: s.closeMenu,
     voiceEnabled: s.voiceEnabled, setVoiceEnabled: s.setVoiceEnabled,
-    setEnergy: s.setEnergy, bondLevel: s.bondLevel, relationshipDims: s.relationshipDims,
-    journeyPhase: s.journeyPhase, attachmentStyle: s.attachmentStyle,
-    twinStyle: s.twinStyle, replyStyle: s.replyStyle,
+    setEnergy: s.setEnergy, bondLevel: s.bondLevel,
     setThinking: s.setThinking, setThinkingStage: s.setThinkingStage,
   }));
 
@@ -160,6 +162,7 @@ export default function Chat() {
   const [featureModal, setFeatureModal] = useState<{ visible: boolean; type: string }>({ visible: false, type: '' });
   const [featureInput, setFeatureInput] = useState('');
   const [messageQueue, setMessageQueue] = useState<Array<{ msg?: string; image?: string }>>([]);
+  const [twinEnergy, setTwinEnergy] = useState(100);
 
   const flatRef = useRef<FlatList<ChatMessage>>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -190,7 +193,24 @@ export default function Chat() {
   useEffect(() => { Animated.spring(attachAnim, { toValue: showAttach ? 1 : 0, useNativeDriver: true, tension: 65, friction: 11 }).start(); }, [showAttach]);
   useEffect(() => { if (messageQueue.length > 0 && !loading) { const next = messageQueue[0]; setMessageQueue(prev => prev.slice(1)); sendMessage(next.msg, next.image); } }, [messageQueue, loading]);
 
-  const countryCode = (Localization.region || 'SA').toUpperCase();
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/stats`, {
+            headers: { Authorization: `Bearer ${session.access_token}` }
+          });
+          if (res.ok) {
+            const stats = await res.json();
+            const remaining = stats.limits?.messages?.remaining || 0;
+            const limit = stats.limits?.messages?.limit || 15;
+            setTwinEnergy(Math.round((remaining / limit) * 100));
+          }
+        }
+      } catch {}
+    })();
+  }, [chatHistory]);
 
   const sendMessage = useCallback(async (msg?: string, imageBase64?: string) => {
     const message = (msg || input).trim();
@@ -216,8 +236,22 @@ export default function Chat() {
       };
       addMessage(enhancedMsg);
       updateStoreFromResponse(response);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/stats`, {
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        if (res.ok) {
+          const stats = await res.json();
+          const remaining = stats.limits?.messages?.remaining || 0;
+          const limit = stats.limits?.messages?.limit || 15;
+          setTwinEnergy(Math.round((remaining / limit) * 100));
+        }
+      }
+
       if (voiceEnabled) {
-        try { await speakResponse(response.reply, { pitch: useTwinStore.getState().voicePitch, rate: useTwinStore.getState().voiceSpeed }); } catch {}
+        try { await speakResponse(response.reply); } catch {}
       }
     } catch (error: any) {
       if (error.name === 'AbortError') return;
@@ -248,6 +282,25 @@ export default function Chat() {
   }, []);
   const toggleSound = () => setVoiceEnabled(!voiceEnabled);
 
+  const handleQuickTool = async (tool: string) => {
+    let result = '';
+    setLoading(true);
+    try {
+      switch(tool) {
+        case 'weather': result = (await fetchWeather('Cairo')).result || 'الطقس غير متاح'; break;
+        case 'youtube': result = (await fetchYouTube(input || 'music')).result || 'لم أجد فيديوهات'; break;
+        case 'spotify': result = (await fetchSpotify(input || 'music')).result || 'لم أجد أغاني'; break;
+        case 'news': result = (await fetchNews()).result || 'الأخبار غير متاحة'; break;
+        case 'currency': result = (await fetchCurrency('USD')).result || 'أسعار العملات غير متاحة'; break;
+      }
+      if (result) {
+        addMessage({ id: Math.random().toString(36).substr(2,9)+Date.now().toString(36), role: 'twin', content: result, timestamp: Date.now() });
+        if (voiceEnabled) await speakResponse(result);
+      }
+    } catch { Alert.alert('خطأ', 'تعذر تنفيذ الأداة'); }
+    finally { setLoading(false); }
+  };
+
   const handleCamera = useCallback(async () => {
     setShowAttach(false);
     const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -270,6 +323,7 @@ export default function Chat() {
       if (isFree) { Alert.alert(lang === 'ar' ? 'ترقية' : 'Upgrade', lang === 'ar' ? 'الميزة حصرية للباقات المدفوعة' : 'Feature exclusive to paid plans'); return; }
       setFeatureModal({ visible: true, type: action }); setFeatureInput('');
     } else if (action === 'search') { setFeatureModal({ visible: true, type: 'search' }); setFeatureInput(''); }
+    else if (action === 'generate_image') { handleImageGeneration(); }
   }, [send, lang, handleCamera, isFree]);
 
   const handleImageGeneration = async () => {
@@ -282,17 +336,12 @@ export default function Chat() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       if (!token) throw new Error('No token');
-      
-      const res = await fetch('https://my-twin-pro-production-b744.up.railway.app/api/image/generate', {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/image/generate`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ prompt: input })
       });
       const data = await res.json();
-      
       if (data.status === 'success' && data.image_base64) {
         addMessage({ id: Math.random().toString(36).substr(2,9)+Date.now().toString(36), role: 'twin', content: '🖼️ صورة مولدة', image: data.image_base64, timestamp: Date.now() });
         setInput('');
@@ -301,14 +350,13 @@ export default function Chat() {
       }
     } catch (e) {
       Alert.alert(lang === 'ar' ? 'خطأ' : 'Error', 'تعذر الاتصال بالخادم');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleFeatureSend = () => {
     const prompts: Record<string, string> = {
-      search: '/search ', coach: lang === 'ar' ? 'أريد جلسة تدريب: ' : 'Coaching session: ',
+      search: '/search ',
+      coach: lang === 'ar' ? 'أريد جلسة تدريب: ' : 'Coaching session: ',
       dream: lang === 'ar' ? 'أريد تحليل حلمي: ' : 'Dream analysis: ',
     };
     send(prompts[featureModal.type] + featureInput); setFeatureModal({ visible: false, type: '' }); setFeatureInput('');
@@ -326,20 +374,8 @@ export default function Chat() {
 
   const renderMsg = useCallback(({ item, index }: { item: ChatMessage; index: number }) => {
     const isLast = index === chatHistory.length - 1;
-    if (item.role === 'user') {
-      return <UserBubble item={item} isDark={isDark} />;
-    }
-    return (
-      <TwinBubble
-        item={item}
-        isLast={isLast}
-        pulseAnim={pulseAnim}
-        isDark={isDark}
-        onCopy={handleCopy}
-        onRetry={handleRetry}
-        onRegenerate={handleRegenerate}
-      />
-    );
+    if (item.role === 'user') return <UserBubble item={item} isDark={isDark} />;
+    return <TwinBubble item={item} isLast={isLast} pulseAnim={pulseAnim} isDark={isDark} onCopy={handleCopy} onRetry={handleRetry} onRegenerate={handleRegenerate} />;
   }, [chatHistory.length, isDark, handleCopy, handleRetry, handleRegenerate]);
 
   const ListFooter = useCallback(() => {
@@ -351,30 +387,34 @@ export default function Chat() {
       </View>
     );
   }, [loading]);
-
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: colors.bg }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.bg} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[styles.header, { backgroundColor: colors.headerBg, borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={openMenu} style={styles.menuBtn}><Menu size={22} stroke={colors.text} /></TouchableOpacity>
-          <View style={styles.headerCenter}><Text style={[styles.headerName, { color: colors.text }]} numberOfLines={1}>{twinName || (lang === 'ar' ? 'توأمك' : 'Your Twin')}</Text></View>
-          <TouchableOpacity onPress={toggleSound} style={styles.soundBtn}>{voiceEnabled ? <Volume2 size={22} stroke={colors.text} /> : <VolumeX size={22} stroke={colors.subtext} />}</TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.headerName, { color: colors.text }]} numberOfLines={1}>{twinName || (lang === 'ar' ? 'توأمك' : 'Your Twin')}</Text>
+            <View style={styles.indicatorsRow}>
+              <EnergyCircle energy={twinEnergy} isDark={isDark} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[styles.indicatorLabel, { color: colors.subtext }]}>{Math.round(bondLevel)}%</Text>
+                <Text style={{ fontSize: 8, color: colors.subtext }}>{lang === 'ar' ? 'ترابط' : 'Bond'}</Text>
+              </View>
+            </View>
+          </View>
+          <TouchableOpacity onPress={toggleSound} style={styles.soundBtn}>
+            {voiceEnabled ? <Volume2 size={22} stroke={colors.text} /> : <VolumeX size={22} stroke={colors.subtext} />}
+          </TouchableOpacity>
         </View>
-        <FlatList
-          ref={flatRef}
-          data={chatHistory}
-          keyExtractor={(item) => item.id}
-          renderItem={renderMsg}
-          ListFooterComponent={ListFooter}
+
+        <FlatList ref={flatRef} data={chatHistory} keyExtractor={(item) => item.id}
+          renderItem={renderMsg} ListFooterComponent={ListFooter}
           contentContainerStyle={styles.listContent}
           onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })}
-          removeClippedSubviews
-          initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          keyboardDismissMode="interactive"
-        />
+          removeClippedSubviews initialNumToRender={10} maxToRenderPerBatch={10} windowSize={5}
+          keyboardDismissMode="interactive" />
+
         <View style={[styles.inputBar, { backgroundColor: colors.headerBg, borderTopColor: colors.border }]}>
           <TouchableOpacity onPress={() => setShowAttach(true)} style={[styles.addBtn, { backgroundColor: colors.addBtnBg, borderColor: colors.addBtnBorder }]}>
             <Text style={[styles.addBtnText, { color: colors.sendActive }]}>+</Text>
@@ -384,16 +424,29 @@ export default function Chat() {
             value={input} onChangeText={setInput}
             placeholder={lang === 'ar' ? 'اكتب رسالتك... 💜' : 'Type your message... 💜'}
             placeholderTextColor={colors.subtext} multiline maxLength={2000} editable={!loading}
-            onSubmitEditing={() => send()}
-          />
-          <TouchableOpacity
-            onPress={() => send()}
+            onSubmitEditing={() => send()} />
+          <TouchableOpacity onPress={() => send()}
             disabled={loading || (input.trim().length === 0 && !loading)}
-            style={[styles.sendBtn, { backgroundColor: (input.trim().length > 0 && !loading) ? colors.sendActive : colors.sendInactive }]}
-          >
-            {loading ? <ActivityIndicator size="small" color={colors.subtext} /> : <Image source={APP_ICON} style={{ width: 24, height: 24, borderRadius: 12 }} />}
+            style={[styles.sendBtn, { backgroundColor: (input.trim().length > 0 && !loading) ? colors.sendActive : colors.sendInactive }]}>
+            {loading ? <ActivityIndicator size="small" color={colors.subtext} /> : <Send size={22} stroke="#FFF" />}
           </TouchableOpacity>
         </View>
+
+        <View style={[styles.quickToolsBar, { backgroundColor: colors.headerBg, borderTopColor: colors.border }]}>
+          {[
+            { icon: Cloud, label_ar: 'طقس', label_en: 'Weather', tool: 'weather', color: '#06B6D4' },
+            { icon: Music, label_ar: 'موسيقى', label_en: 'Music', tool: 'spotify', color: '#EC4899' },
+            { icon: Film, label_ar: 'يوتيوب', label_en: 'YouTube', tool: 'youtube', color: '#EF4444' },
+            { icon: DollarSign, label_ar: 'عملات', label_en: 'Currency', tool: 'currency', color: '#10B981' },
+            { icon: TrendingUp, label_ar: 'أخبار', label_en: 'News', tool: 'news', color: '#8B5CF6' },
+          ].map((item, idx) => (
+            <TouchableOpacity key={idx} style={styles.quickToolBtn} onPress={() => handleQuickTool(item.tool)}>
+              <item.icon size={20} stroke={item.color} />
+              <Text style={[styles.quickToolLabel, { color: colors.subtext }]}>{lang === 'ar' ? item.label_ar : item.label_en}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <Modal visible={showAttach} transparent animationType="none" onRequestClose={() => setShowAttach(false)}>
           <TouchableOpacity style={styles.attachOverlay} activeOpacity={1} onPress={() => setShowAttach(false)}>
             <Animated.View style={[styles.attachContainer, { backgroundColor: isDark ? '#2A2A2A' : '#FFF', transform: [{ translateY: attachAnim.interpolate({ inputRange: [0, 1], outputRange: [400, 0] }) }] }]}>
@@ -409,6 +462,7 @@ export default function Chat() {
             </Animated.View>
           </TouchableOpacity>
         </Modal>
+
         <Modal visible={featureModal.visible} transparent animationType="fade" onRequestClose={() => setFeatureModal({ visible: false, type: '' })}>
           <View style={styles.featureOverlay}>
             <View style={[styles.featureContainer, { backgroundColor: isDark ? '#2A2A2A' : '#FFF' }]}>
@@ -432,6 +486,8 @@ const styles = StyleSheet.create({
   menuBtn: { padding: 4 },
   headerCenter: { flex: 1, alignItems: 'center' },
   headerName: { fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  indicatorsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 2 },
+  indicatorLabel: { fontSize: 10, fontWeight: '600' },
   soundBtn: { padding: 4 },
   listContent: { paddingHorizontal: 12, paddingVertical: 12, flexGrow: 1 },
   typingRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 10, paddingVertical: 8, gap: 8 },
@@ -448,8 +504,6 @@ const styles = StyleSheet.create({
   retryText: { color: '#EF4444', fontSize: 12 },
   memoryBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginBottom: 6 },
   memoryBadgeText: { fontSize: 11, fontWeight: '600' },
-  emotionTag: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginBottom: 6, alignSelf: 'flex-start' },
-  emotionTagText: { fontSize: 11, fontWeight: '600' },
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   actionBtn: { padding: 4 },
   inputBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingTop: 8, borderTopWidth: 1, gap: 8 },
@@ -457,6 +511,9 @@ const styles = StyleSheet.create({
   addBtnText: { fontSize: 18, fontWeight: '700' },
   textInput: { flex: 1, backgroundColor: '#F8F8F8', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 22, fontSize: 15, maxHeight: 100, minHeight: 44, borderWidth: 1 },
   sendBtn: { width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center' },
+  quickToolsBar: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 6, borderTopWidth: 1, paddingHorizontal: 10 },
+  quickToolBtn: { alignItems: 'center', padding: 6 },
+  quickToolLabel: { fontSize: 10, marginTop: 2, fontWeight: '600' },
   attachOverlay: { flex: 1, justifyContent: 'flex-end' },
   attachContainer: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 30 },
   attachHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
