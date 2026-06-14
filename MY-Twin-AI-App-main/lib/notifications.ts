@@ -1,16 +1,11 @@
-/**
- * MyTwin – Push Notifications Service v1.0
- * - تسجيل الجهاز للحصول على Push Token
- * - معالجة الإشعارات الواردة (Foreground + Background)
- * - التنقل الذكي عند الضغط على الإشعار
- */
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform, Alert } from 'react-native';
 import { supabase } from './supabase';
 import { router } from 'expo-router';
+import * as Sentry from '@sentry/react-native';
 
-// ✅ تكوين معالج الإشعارات الأمامية (Foreground)
+// ✅ معالج الإشعارات الأمامية
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -25,11 +20,10 @@ Notifications.setNotificationHandler({
  */
 export async function registerForPushNotifications(): Promise<string | null> {
   if (!Device.isDevice) {
-    console.log('⚠️ الإشعارات تحتاج جهازاً حقيقياً');
+    Sentry.captureMessage('⚠️ الإشعارات تحتاج جهازاً حقيقياً', 'warning');
     return null;
   }
 
-  // طلب الصلاحيات
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
 
@@ -39,29 +33,32 @@ export async function registerForPushNotifications(): Promise<string | null> {
   }
 
   if (finalStatus !== 'granted') {
-    console.log('❌ المستخدم رفض صلاحية الإشعارات');
+    Sentry.captureMessage('❌ المستخدم رفض صلاحية الإشعارات', 'info');
     return null;
   }
 
-  // الحصول على Push Token
   try {
-    const projectId = 'b5e2baa3-6015-40a5-9f31-115298d3b0c9'; // من app.json
+    const projectId = 'b5e2baa3-6015-40a5-9f31-115298d3b0c9';
     const token = await Notifications.getExpoPushTokenAsync({ projectId });
-    console.log('✅ Push Token:', token.data);
 
-    // تخزين التوكن في Supabase
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
-      await supabase.from('profiles').update({
+      const { error } = await supabase.from('profiles').update({
         push_token: token.data,
         device_platform: Platform.OS,
         push_token_updated_at: new Date().toISOString(),
       }).eq('id', session.user.id);
+
+      if (error) {
+        Sentry.captureException(error);
+      } else {
+        console.log('✅ Push Token مخزن بنجاح');
+      }
     }
 
     return token.data;
-  } catch (e) {
-    console.error('❌ فشل الحصول على Push Token:', e);
+  } catch (e: any) {
+    Sentry.captureException(e);
     return null;
   }
 }
@@ -70,24 +67,20 @@ export async function registerForPushNotifications(): Promise<string | null> {
  * معالجة الإشعارات الواردة والتنقل عند الضغط
  */
 export function setupNotificationHandlers() {
-  // ✅ عند الضغط على إشعار (التطبيق في الخلفية أو مغلق)
   Notifications.addNotificationResponseReceivedListener(response => {
     const data = response.notification.request.content.data;
     console.log('📩 تم الضغط على إشعار:', data);
 
-    // التنقل حسب نوع الإشعار
-    if (data?.type === 'proactive') {
-      router.push('/chat');
-    } else if (data?.type === 'bond_update') {
-      router.push('/relationship');
-    } else if (data?.type === 'goal_reminder') {
-      router.push('/relationship');
-    } else {
-      router.push('/chat');
+    try {
+      if (data?.type === 'proactive') router.push('/chat');
+      else if (data?.type === 'bond_update') router.push('/relationship');
+      else if (data?.type === 'goal_reminder') router.push('/relationship');
+      else router.push('/chat');
+    } catch (e) {
+      Sentry.captureException(e);
     }
   });
 
-  // ✅ عند استلام إشعار في الأمام (Foreground)
   Notifications.addNotificationReceivedListener(notification => {
     console.log('📬 إشعار في الأمام:', notification.request.content.title);
   });
@@ -98,18 +91,22 @@ export function setupNotificationHandlers() {
  */
 export async function setupAndroidChannels() {
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('mytwin_proactive', {
-      name: 'رسائل استباقية',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#6B21A8',
-    });
+    try {
+      await Notifications.setNotificationChannelAsync('mytwin_proactive', {
+        name: 'رسائل استباقية',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#6B21A8',
+      });
 
-    await Notifications.setNotificationChannelAsync('mytwin_default', {
-      name: 'عام',
-      importance: Notifications.AndroidImportance.DEFAULT,
-      vibrationPattern: [0, 100, 100, 100],
-      lightColor: '#6B21A8',
-    });
+      await Notifications.setNotificationChannelAsync('mytwin_default', {
+        name: 'عام',
+        importance: Notifications.AndroidImportance.DEFAULT,
+        vibrationPattern: [0, 100, 100, 100],
+        lightColor: '#6B21A8',
+      });
+    } catch (e) {
+      Sentry.captureException(e);
+    }
   }
 }

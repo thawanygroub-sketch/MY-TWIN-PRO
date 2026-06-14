@@ -1,10 +1,5 @@
-import os, logging, asyncio, time, random, warnings
-from typing import Optional, AsyncGenerator, List, Tuple
-
-warnings.filterwarnings("ignore", message="All support for the `google.generativeai` package has ended")
-import google.generativeai as genai
-from openai import OpenAI
-from model_registry import TASK_CHAINS, MODEL_COSTS, MODEL_LATENCY_ESTIMATE, FALLBACK_MESSAGES
+import os, logging, asyncio, time
+from typing import Optional
 
 logger = logging.getLogger("multi_ai")
 
@@ -13,142 +8,81 @@ class AIUnavailable(Exception):
 
 class MultiAIClient:
     def __init__(self):
-        gemini_key = os.getenv("GEMINI_API_KEY")
-        self.gemini_model = None
-        if gemini_key:
-            try:
-                genai.configure(api_key=gemini_key)
-                self.gemini_model = genai.GenerativeModel("gemini-2.5-flash")
-            except Exception as e:
-                logger.error(f"Gemini init failed: {e}")
+        self._openai = None
+        self._groq_client = None
+        self._genai_client = None
+        self.max_retries = 2
 
-        groq_key = os.getenv("GROQ_API_KEY")
-        self.groq_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key) if groq_key else None
+    async def get_best_reply(self, prompt: str, task: str = "general", lang: str = "ar") -> str:
+        providers = [self._try_groq, self._try_openrouter, self._try_gemini]
+        last_error = None
+        for provider in providers:
+            for attempt in range(self.max_retries):
+                try:
+                    result = await provider(prompt)
+                    if result and len(result) > 5:
+                        return result
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"Provider {provider.__name__} attempt {attempt+1} failed: {e}")
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+                break
+        raise AIUnavailable(f"All AI providers failed. Last error: {last_error}")
 
-        or_key = os.getenv("OPENROUTER_API_KEY")
-        self.or_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=or_key) if or_key else None
-
-    async def _call_model(self, provider: str, model: str, prompt: str, max_t: int, timeout: int = 8) -> Tuple[Optional[str], str, float, int]:
-        start = time.time()
+    async def _try_groq(self, prompt: str) -> Optional[str]:
         try:
-            if provider == "groq" and self.groq_client:
-                resp = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None, 
-                        lambda: self.groq_client.chat.completions.create(
-                            model=model.split("/")[-1],
-                            messages=[{"role":"user","content":prompt}],
-                            temperature=0.8, max_tokens=max_t
-                        )
-                    ),
-                    timeout=timeout
-                )
-                result = resp.choices[0].message.content
-                latency = (time.time() - start) * 1000
-                return result.strip() if result else None, "Groq", latency, 0
-
-            elif provider == "openrouter" and self.or_client:
-                resp = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: self.or_client.chat.completions.create(
-                            model=model.split("/", 1)[-1],
-                            messages=[{"role":"user","content":prompt}],
-                            temperature=0.8, max_tokens=max_t
-                        )
-                    ),
-                    timeout=timeout
-                )
-                result = resp.choices[0].message.content
-                latency = (time.time() - start) * 1000
-                return result.strip() if result else None, "OpenRouter", latency, 0
-
-            elif provider == "gemini" and self.gemini_model:
-                resp = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: self.gemini_model.generate_content(
-                            prompt,
-                            generation_config=genai.GenerationConfig(temperature=0.8, max_output_tokens=max_t)
-                        )
-                    ),
-                    timeout=timeout
-                )
-                result = resp.text
-                latency = (time.time() - start) * 1000
-                return result.strip() if result else None, "Gemini", latency, 0
-
-        except (asyncio.TimeoutError, Exception) as e:
-            logger.warning(f"Model {provider}/{model} failed: {e}")
-        
-        return None, provider, 0, 0
-
-    async def get_best_reply(self, prompt: str, task: str = "general") -> str:
-        chains = TASK_CHAINS.get(task, TASK_CHAINS["general"])
-        
-        tasks = []
-        for i, model_spec in enumerate(chains[:3]):
-            parts = model_spec.split("/", 1)
-            provider = parts[0]
-            model = parts[1]
-            max_t = max(60, min(300, len(prompt) // 2))
-            timeout = int(MODEL_LATENCY_ESTIMATE.get(provider, 3.0) * 2)
-            task = asyncio.create_task(self._call_model(provider, model, prompt, max_t, timeout))
-            tasks.append(task)
-
-        pending = set(tasks)
-        while pending:
-            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                result, provider, latency, cost = task.result()
-                if result and len(result.strip()) >= 1:
-                    logger.info(f"✅ [{task}] → {provider} ({latency:.0f}ms)")
-                    return result.strip()
-
-        if len(chains) > 3:
-            parts = chains[3].split("/", 1)
-            result, provider, latency, cost = await self._call_model(parts[0], parts[1], prompt, 100, 10)
-            if result:
-                return result.strip()
-
-        return random.choice(FALLBACK_MESSAGES)
-
-    async def stream_reply(self, prompt: str, task: str = "general") -> AsyncGenerator[str, None]:
-        if self.groq_client:
-            try:
-                stream = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: self.groq_client.chat.completions.create(
-                            model="llama-3.3-70b-versatile",
-                            messages=[{"role":"user","content":prompt}],
-                            temperature=0.8, max_tokens=100, stream=True
-                        )
-                    ),
-                    timeout=5
-                )
-                if stream:
-                    for chunk in stream:
-                        if chunk.choices[0].delta.content:
-                            yield chunk.choices[0].delta.content
-                    return
-            except Exception as e:
-                logger.warning(f"Groq stream failed: {e}")
-        
-        full = await self.get_best_reply(prompt, task)
-        yield full
-
-    def generate_image(self, prompt: str) -> Optional[str]:
-        image_key = os.getenv("GEMINI_IMAGE_API_KEY", os.getenv("GEMINI_API_KEY", ""))
-        if not image_key:
-            logger.warning("No Gemini image API key configured")
+            from openai import OpenAI
+            key = os.getenv("GROQ_API_KEY")
+            if not key:
+                return None
+            if not self._groq_client:
+                self._groq_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=key)
+            resp = self._groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500, temperature=0.7, timeout=10
+            )
+            return resp.choices[0].message.content
+        except Exception:
             return None
+
+    async def _try_openrouter(self, prompt: str) -> Optional[str]:
         try:
-            genai.configure(api_key=image_key)
-            model = genai.GenerativeModel("gemini-2.5-flash-image")
-            response = model.generate_content(prompt)
-            if response.parts and hasattr(response.parts[0], 'inline_data'):
-                return response.parts[0].inline_data.data
+            from openai import OpenAI
+            key = os.getenv("OPENROUTER_API_KEY")
+            if not key:
+                return None
+            if not self._openai:
+                self._openai = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
+            resp = self._openai.chat.completions.create(
+                model="meta-llama/llama-4-maverick",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500, temperature=0.7, timeout=10
+            )
+            return resp.choices[0].message.content
+        except Exception:
+            return None
+
+    async def _try_gemini(self, prompt: str) -> Optional[str]:
+        try:
+            from google import genai
+            key = os.getenv("GEMINI_API_KEY")
+            if not key:
+                return None
+            if not self._genai_client:
+                self._genai_client = genai.Client(api_key=key)
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self._genai_client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                    config={"max_output_tokens": 500, "temperature": 0.7}
+                )
+            )
+            if response and response.text:
+                return response.text
         except Exception as e:
-            logger.warning(f"Image generation failed: {e}")
+            logger.warning(f"Gemini error: {e}")
         return None

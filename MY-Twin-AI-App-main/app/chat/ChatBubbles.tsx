@@ -1,4 +1,4 @@
-import React, { memo, useState, useRef, useEffect } from 'react';
+import React, { memo } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, Animated, Share, Linking, TextInput } from 'react-native';
 import { ChatMessage } from '../../store/useTwinStore';
 import { Copy, Share2, RotateCcw, Zap, Edit3, Check, ThumbsUp, ThumbsDown, ExternalLink, Film, X } from 'lucide-react-native';
@@ -21,82 +21,73 @@ export const COLORS = {
   },
 };
 
-// ── Markdown مع روابط مفعلة ─────────────────────
 export const MarkdownRenderer = memo(({ content, isDark }: { content: string; isDark: boolean }) => {
   const markdownStyles: any = {
     body: { color: isDark ? '#FFF' : '#1A1A1A', fontSize: 16, lineHeight: 26 },
     heading1: { fontSize: 22, fontWeight: 'bold', marginBottom: 10, color: isDark ? '#FFF' : '#1A1A1A' },
     heading2: { fontSize: 20, fontWeight: 'bold', marginBottom: 8, color: isDark ? '#FFF' : '#1A1A1A' },
     heading3: { fontSize: 18, fontWeight: 'bold', marginBottom: 6, color: isDark ? '#FFF' : '#1A1A1A' },
+    list_item: { marginBottom: 6, flexDirection: 'row' },
+    bullet_list: { marginBottom: 10 },
+    ordered_list: { marginBottom: 10 },
+    table: { marginBottom: 10, borderWidth: 1, borderColor: isDark ? '#444' : '#E0E0E0', borderRadius: 8 },
+    th: { padding: 8, backgroundColor: isDark ? '#333' : '#F5F5F5', fontWeight: 'bold' },
+    td: { padding: 8, borderTopWidth: 1, borderColor: isDark ? '#444' : '#E0E0E0' },
     code_inline: { backgroundColor: isDark ? '#333' : '#F0F0F0', color: isDark ? '#FFF' : '#333', paddingHorizontal: 6, borderRadius: 4 },
     code_block: { backgroundColor: isDark ? '#222' : '#F0F0F0', padding: 12, borderRadius: 8, marginBottom: 8 },
-    blockquote: { borderLeftWidth: 3, borderLeftColor: '#6B21A8', paddingLeft: 12, marginBottom: 8 },
+    blockquote: { borderLeftWidth: 3, borderLeftColor: '#6B21A8', paddingLeft: 12, marginBottom: 8, backgroundColor: isDark ? '#2A2A2A' : '#F9F9F9' },
     strong: { fontWeight: 'bold' },
+    em: { fontStyle: 'italic' },
     link: { color: '#6B21A8', textDecorationLine: 'underline' },
   };
   return <Markdown style={markdownStyles} onLinkPress={(url: string) => { Linking.openURL(url).catch(() => {}); return false; }}>{content}</Markdown>;
 });
 
-// ── فقاعة المستخدم مع إمكانية التعديل ─────────────
-export const UserBubble = memo(({ item, isDark, onStartEdit, onSaveEdit, isEditing, editContent, setEditContent }: {
-  item: ChatMessage; isDark: boolean;
-  onStartEdit: (msg: ChatMessage) => void; onSaveEdit: (msg: ChatMessage, newContent: string) => void;
-  isEditing: boolean; editContent: string; setEditContent: (v: string) => void;
-}) => (
-  <View style={bubbleStyles.userRow}>
-    <View style={[bubbleStyles.userBubble, { backgroundColor: isDark ? COLORS.dark.bubbleUser : COLORS.light.bubbleUser }]}>
-      {item.image && <Image source={{ uri: item.image?.startsWith('data:') ? item.image : `data:image/jpeg;base64,${item.image}` }} style={bubbleStyles.chatImage} />}
+export const UserBubble = memo(({ item, isDark, onStartEdit, onSaveEdit, isEditing, editContent, setEditContent }: any) => (
+  <View style={styles.userRow}>
+    <View style={[styles.userBubble, { backgroundColor: isDark ? COLORS.dark.bubbleUser : COLORS.light.bubbleUser }]}>
+      {item.image && <Image source={{ uri: item.image?.startsWith('data:') ? item.image : `data:image/jpeg;base64,${item.image}` }} style={styles.chatImage} />}
       {isEditing ? (
         <View style={{ gap: 8 }}>
-          <TextInput style={[bubbleStyles.editInput, { color: isDark ? COLORS.dark.userText : COLORS.light.userText, backgroundColor: isDark ? '#333' : '#FFF' }]} value={editContent} onChangeText={setEditContent} multiline autoFocus />
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
-            <TouchableOpacity onPress={() => onSaveEdit(item, editContent)} style={bubbleStyles.editSaveBtn}><Check size={16} stroke="#FFF" /></TouchableOpacity>
-          </View>
+          <TextInput style={[styles.editInput, { color: isDark ? COLORS.dark.userText : COLORS.light.userText }]} value={editContent} onChangeText={setEditContent} multiline autoFocus />
+          <TouchableOpacity onPress={() => onSaveEdit(item, editContent)} style={styles.editSaveBtn}><Check size={16} stroke="#FFF" /></TouchableOpacity>
         </View>
       ) : (
-        <Text style={[bubbleStyles.userText, { color: isDark ? COLORS.dark.userText : COLORS.light.userText }]}>{item.content}</Text>
+        <Text style={[styles.userText, { color: isDark ? COLORS.dark.userText : COLORS.light.userText }]}>{item.content}</Text>
       )}
       {!isEditing && (
-        <TouchableOpacity onPress={() => onStartEdit(item)} style={bubbleStyles.editBtn}><Edit3 size={14} stroke={isDark ? '#999' : '#666'} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => onStartEdit(item)} style={styles.editBtn}><Edit3 size={14} stroke={isDark ? '#999' : '#666'} /></TouchableOpacity>
       )}
     </View>
   </View>
 ));
 
-// ── فقاعة التوأم مع Like/Dislike ────────────────
-export const TwinBubble = memo(({ item, isDark, onCopy, onRetry, onRegenerate, onLike, onDislike, liked, disliked }: {
-  item: ChatMessage; isDark: boolean;
-  onCopy: (text: string) => void; onRetry: (msg: ChatMessage) => void;
-  onRegenerate: (msg: ChatMessage) => void;
-  onLike: (msg: ChatMessage) => void; onDislike: (msg: ChatMessage) => void;
-  liked: boolean; disliked: boolean;
-}) => (
-  <View style={bubbleStyles.twinRow}>
-    <Image source={APP_ICON} style={bubbleStyles.twinAvatar} />
-    <View style={bubbleStyles.twinContent}>
+export const TwinBubble = memo(({ item, isDark, onCopy, onRetry, onRegenerate, onLike, onDislike, liked, disliked }: any) => (
+  <View style={styles.twinRow}>
+    <Image source={APP_ICON} style={styles.twinAvatar} />
+    <View style={styles.twinContent}>
       {item.youtubeVideo && (
-        <TouchableOpacity onPress={() => Linking.openURL(item.youtubeVideo!)} style={bubbleStyles.youtubeCard}>
+        <TouchableOpacity onPress={() => Linking.openURL(item.youtubeVideo!)} style={styles.youtubeCard}>
           <Film size={24} stroke="#EF4444" />
           <View style={{ flex: 1, marginLeft: 8 }}><Text style={{ color: '#EF4444', fontWeight: '600' }}>▶️ شاهد الفيديو</Text><Text style={{ color: '#999', fontSize: 11 }}>{item.youtubeVideo}</Text></View>
           <ExternalLink size={16} stroke="#EF4444" />
         </TouchableOpacity>
       )}
       <MarkdownRenderer content={item.content} isDark={isDark} />
-      <View style={bubbleStyles.actionRow}>
-        <TouchableOpacity onPress={() => onCopy(item.content)} style={bubbleStyles.actionBtn}><Copy size={16} stroke={isDark ? '#999' : '#666'} /></TouchableOpacity>
-        <TouchableOpacity onPress={() => Share.share({ message: item.content })} style={bubbleStyles.actionBtn}><Share2 size={16} stroke={isDark ? '#999' : '#666'} /></TouchableOpacity>
-        <TouchableOpacity onPress={() => onRegenerate(item)} style={bubbleStyles.actionBtn}><RotateCcw size={16} stroke={isDark ? '#999' : '#666'} /></TouchableOpacity>
-        <TouchableOpacity onPress={() => onLike(item)} style={[bubbleStyles.actionBtn, liked && { backgroundColor: '#10B98120', borderRadius: 8 }]}><ThumbsUp size={16} stroke={liked ? '#10B981' : isDark ? '#999' : '#666'} fill={liked ? '#10B981' : 'transparent'} /></TouchableOpacity>
-        <TouchableOpacity onPress={() => onDislike(item)} style={[bubbleStyles.actionBtn, disliked && { backgroundColor: '#EF444420', borderRadius: 8 }]}><ThumbsDown size={16} stroke={disliked ? '#EF4444' : isDark ? '#999' : '#666'} fill={disliked ? '#EF4444' : 'transparent'} /></TouchableOpacity>
+      <View style={styles.actionRow}>
+        <TouchableOpacity onPress={() => onCopy(item.content)} style={styles.actionBtn}><Copy size={16} stroke={isDark ? '#999' : '#666'} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => Share.share({ message: item.content })} style={styles.actionBtn}><Share2 size={16} stroke={isDark ? '#999' : '#666'} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => onRegenerate(item)} style={styles.actionBtn}><RotateCcw size={16} stroke={isDark ? '#999' : '#666'} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => onLike(item)} style={[styles.actionBtn, liked && { backgroundColor: '#10B98120', borderRadius: 8 }]}><ThumbsUp size={16} stroke={liked ? '#10B981' : isDark ? '#999' : '#666'} fill={liked ? '#10B981' : 'transparent'} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => onDislike(item)} style={[styles.actionBtn, disliked && { backgroundColor: '#EF444420', borderRadius: 8 }]}><ThumbsDown size={16} stroke={disliked ? '#EF4444' : isDark ? '#999' : '#666'} fill={disliked ? '#EF4444' : 'transparent'} /></TouchableOpacity>
       </View>
       {item.failed && (
-        <TouchableOpacity onPress={() => onRetry(item)} style={bubbleStyles.retryBtn}><RotateCcw size={14} stroke="#EF4444" /><Text style={bubbleStyles.retryText}>إعادة المحاولة</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => onRetry(item)} style={styles.retryBtn}><RotateCcw size={14} stroke="#EF4444" /><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity>
       )}
     </View>
   </View>
 ));
 
-// ── دائرة الطاقة ────────────────────────────────
 export const EnergyCircle = memo(({ energy, isDark }: { energy: number; isDark: boolean }) => {
   const color = energy > 60 ? '#10B981' : energy > 25 ? '#F59E0B' : '#EF4444';
   const size = 40; const strokeWidth = 4; const progress = Math.max(0, Math.min(energy, 100)) / 100;
@@ -113,15 +104,14 @@ export const EnergyCircle = memo(({ energy, isDark }: { energy: number; isDark: 
   );
 });
 
-// ── مستطيل الأداة المختارة (Chip) ───────────────
-export const ToolChip = memo(({ label, icon: Icon, color, onClose }: { label: string; icon: any; color: string; onClose: () => void }) => (
-  <View style={[bubbleStyles.toolChip, { backgroundColor: color + '15', borderColor: color + '30' }]}>
-    <Icon size={16} stroke={color} /><Text style={[bubbleStyles.toolChipText, { color }]}>{label}</Text>
-    <TouchableOpacity onPress={onClose} style={bubbleStyles.toolChipClose}><X size={14} stroke={color} /></TouchableOpacity>
+export const ToolChip = memo(({ label, icon: Icon, color, onClose }: any) => (
+  <View style={[styles.toolChip, { backgroundColor: color + '15', borderColor: color + '30' }]}>
+    <Icon size={16} stroke={color} /><Text style={[styles.toolChipText, { color }]}>{label}</Text>
+    <TouchableOpacity onPress={onClose} style={styles.toolChipClose}><X size={14} stroke={color} /></TouchableOpacity>
   </View>
 ));
 
-export const bubbleStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   userRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 20 },
   userBubble: { maxWidth: '80%', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 20, borderBottomRightRadius: 4 },
   userText: { fontSize: 16, lineHeight: 24 },

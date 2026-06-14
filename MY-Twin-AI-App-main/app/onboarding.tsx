@@ -1,11 +1,13 @@
-import { SafeAreaView, View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Alert, ActivityIndicator, TextInput, Modal } from 'react-native';
+import {
+  SafeAreaView, View, Text, TouchableOpacity, StyleSheet,
+  ScrollView, Animated, Alert, ActivityIndicator, TextInput, Modal
+} from 'react-native';
 import { useState, useRef, useEffect } from 'react';
 import { router } from 'expo-router';
 import { useTwinStore, TwinGender } from '../store/useTwinStore';
 import { supabase } from '../lib/supabase';
 import { Sparkles, ArrowLeft, ArrowRight, Check, Volume2 } from 'lucide-react-native';
 
-// ... (QUESTIONS و TRAIT_INFO كما هي دون تغيير)
 const QUESTIONS = {
   ar: [
     { id:'1', q:'عندما تواجه مشكلة كبيرة، كيف تتعامل معها عادةً؟', options:['أحللها بهدوء','أثق بحدسي','أطلب المساعدة','أتجنبها مؤقتاً'] },
@@ -61,20 +63,31 @@ function analyzePersonality(answers: Record<string, string>, lang: string) {
   const sorted = Object.entries(traits).sort((a,b) => b[1] - a[1]);
   return { traits, dominant: sorted[0][0], secondary: sorted[1][0] };
 }
-
 export default function Onboarding() {
   const { userId, twinName, twinGender, setTwinName, setTwinGender, addMessage, lang, theme } = useTwinStore();
   const isAr = lang === 'ar'; const isDark = theme === 'dark';
   const questions = QUESTIONS[lang as keyof typeof QUESTIONS] || QUESTIONS['ar'];
-  const [step, setStep] = useState(0); const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [userName, setUserName] = useState(''); const [freeInfo, setFreeInfo] = useState('');
+
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [userName, setUserName] = useState('');
+  const [freeInfo, setFreeInfo] = useState('');
   const [newTwinName, setNewTwinName] = useState(twinName || (isAr ? 'توأمك' : 'Your Twin'));
   const [newTwinGender, setNewTwinGender] = useState<TwinGender>(twinGender || 'female');
-  const [loading, setLoading] = useState(false); const [analysisResult, setAnalysisResult] = useState<any>(null);
-  const [showAnalysis, setShowAnalysis] = useState(false); const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [loading, setLoading] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => { Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start(); }, [step]);
-  const handleAnswer = (qId: string, opt: string) => { setAnswers(prev => ({ ...prev, [qId]: opt })); if (step < questions.length - 1) { Animated.timing(fadeAnim, { toValue: 0, duration: 100, useNativeDriver: true }).start(() => setStep(prev => prev + 1)); } };
+
+  const handleAnswer = (qId: string, opt: string) => {
+    setAnswers(prev => ({ ...prev, [qId]: opt }));
+    if (step < questions.length - 1) {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 100, useNativeDriver: true }).start(() => setStep(prev => prev + 1));
+    }
+  };
+
   const handleBack = () => { if (step > 0) { Animated.timing(fadeAnim, { toValue: 0, duration: 100, useNativeDriver: true }).start(() => setStep(prev => prev - 1)); } };
   const handleSkip = () => setStep(questions.length - 1);
 
@@ -82,27 +95,65 @@ export default function Onboarding() {
     if (!userName.trim()) { Alert.alert(isAr ? 'تنبيه' : 'Notice', isAr ? 'من فضلك أدخل اسمك' : 'Please enter your name'); return; }
     setLoading(true);
     try {
-      const analysis = analyzePersonality(answers, lang); setAnalysisResult(analysis);
-      setTwinName(newTwinName.trim() || (isAr ? 'توأمك' : 'Your Twin')); setTwinGender(newTwinGender);
-      const { error } = await supabase.from('profiles').upsert({ id: userId, twin_name: newTwinName.trim() || (isAr ? 'توأمك' : 'Your Twin'), twin_gender: newTwinGender, full_name: userName.trim(), onboarded: true, personality_analysis: analysis, free_info: freeInfo });
+      let analysis = analyzePersonality(answers, lang);
+      // ✅ محاولة تحليل LLM عبر API
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        try {
+          const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/analyze-personality`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+            body: JSON.stringify({ answers, lang })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.analysis) analysis = data.analysis;
+          }
+        } catch {}
+      }
+
+      setAnalysisResult(analysis);
+      setTwinName(newTwinName.trim() || (isAr ? 'توأمك' : 'Your Twin'));
+      setTwinGender(newTwinGender);
+      
+      const { error } = await supabase.from('profiles').upsert({
+        id: userId, 
+        twin_name: newTwinName.trim() || (isAr ? 'توأمك' : 'Your Twin'),
+        twin_gender: newTwinGender,
+        full_name: userName.trim(), 
+        onboarded: true,
+        personality_analysis: analysis,
+        free_info: freeInfo,
+      });
       if (error) throw error;
 
-      // ✅ تخزين التحليل كذاكرة دائمة (memory)
-      const d = TRAIT_INFO[analysis.dominant]; const s = TRAIT_INFO[analysis.secondary];
+      // تخزين كذاكرة دائمة
+      const d = TRAIT_INFO[analysis.dominant];
+      const s = TRAIT_INFO[analysis.secondary];
       const memoryContent = isAr
         ? `تحليل شخصية ${userName.trim()}: الطابع الأساسي ${d.ar}، الثانوي ${s.ar}.`
         : `Personality analysis for ${userName.trim()}: primary ${d.en}, secondary ${d.en}.`;
-      await supabase.from('memories').insert({ user_id: userId, content: memoryContent, importance: 0.9, emotion: 'neutral', memory_type: 'core' });
-
+      await supabase.from('memories').insert({
+        user_id: userId,
+        content: memoryContent,
+        importance: 0.9,
+        emotion: 'neutral',
+        memory_type: 'core'
+      });
+      
       setShowAnalysis(true);
-    } catch (e: any) { console.error('❌ فشل:', e); Alert.alert(isAr ? 'خطأ' : 'Error', e.message || (isAr ? 'فشل الحفظ' : 'Save failed')); }
-    finally { setLoading(false); }
+    } catch (e: any) { 
+      console.error('❌ فشل:', e);
+      Alert.alert(isAr ? 'خطأ' : 'Error', e.message || (isAr ? 'فشل الحفظ' : 'Save failed')); 
+    } finally { setLoading(false); }
   };
 
   const handleContinueToChat = () => {
-    setShowAnalysis(false); const analysis = analysisResult;
+    setShowAnalysis(false);
+    const analysis = analysisResult;
     if (!analysis) { router.replace('/chat'); return; }
-    const d = TRAIT_INFO[analysis.dominant]; const s = TRAIT_INFO[analysis.secondary];
+    const d = TRAIT_INFO[analysis.dominant];
+    const s = TRAIT_INFO[analysis.secondary];
     const genderEmoji = newTwinGender === 'male' ? '♂️' : '♀️';
     const welcomeMsg = isAr
       ? `🎯 مرحباً ${userName.trim()}!\n\nأنا ${newTwinName.trim() || 'توأمك'} ${genderEmoji}\n\n**طابعك الأساسي:** ${d.emoji} ${d.ar}\n**الثانوي:** ${s.emoji} ${s.ar}\n\nأنا هنا لمساعدتك في رحلتك. اسألني أي شيء! 💜`
@@ -111,12 +162,15 @@ export default function Onboarding() {
     router.replace('/chat');
   };
 
-  const currentQ = questions[step]; const isLastStep = step === questions.length - 1;
+  const currentQ = questions[step];
+  const isLastStep = step === questions.length - 1;
+
   return (
     <SafeAreaView style={[styles.safe, isDark && { backgroundColor: '#1A1A1A' }]}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Animated.View style={[styles.card, isDark && { backgroundColor: '#2A2A2A', borderColor: '#444' }, { opacity: fadeAnim }]}>
-          <View style={styles.headerRow}><View style={styles.progressBar}>{questions.map((_, i) => (<View key={i} style={[styles.dot, i <= step && styles.dotActive]} />))}</View>
+          <View style={styles.headerRow}>
+            <View style={styles.progressBar}>{questions.map((_, i) => (<View key={i} style={[styles.dot, i <= step && styles.dotActive]} />))}</View>
             {!isLastStep && (<TouchableOpacity onPress={handleSkip} style={styles.skipBtn}><Text style={[styles.skipText, isDark && { color: '#D8B4FE' }]}>{isAr ? 'تخطي' : 'Skip'}</Text><ArrowRight size={16} stroke={isDark ? '#D8B4FE' : '#6B21A8'} /></TouchableOpacity>)}
           </View>
           {!isLastStep ? (<>
@@ -138,37 +192,69 @@ export default function Onboarding() {
             </View>
             <Text style={[styles.label, isDark && { color:'#CCC' }]}>{isAr ? 'أخبرني عن نفسك (اختياري)' : 'Tell me about yourself (optional)'}</Text>
             <TextInput style={[styles.textArea, isDark && { backgroundColor:'#333', color:'#FFF', borderColor:'#444' }]} placeholder={isAr ? 'اكتب بحرية...' : 'Write freely...'} placeholderTextColor="#999" value={freeInfo} onChangeText={setFreeInfo} multiline numberOfLines={4} />
-            <TouchableOpacity style={[styles.submitBtn, (!userName.trim() || loading) && { opacity:0.6 }]} onPress={handleFinalSubmit} disabled={!userName.trim() || loading}>{loading ? <ActivityIndicator color="#FFF" /> : (<><Check size={20} stroke="#FFF" /><Text style={styles.submitText}>{isAr ? 'ابدأ رحلتك' : 'Start Your Journey'}</Text></>)}</TouchableOpacity>
+            <TouchableOpacity style={[styles.submitBtn, (!userName.trim() || loading) && { opacity:0.6 }]} onPress={handleFinalSubmit} disabled={!userName.trim() || loading}>
+              {loading ? <ActivityIndicator color="#FFF" /> : (<><Check size={20} stroke="#FFF" /><Text style={styles.submitText}>{isAr ? 'ابدأ رحلتك' : 'Start Your Journey'}</Text></>)}
+            </TouchableOpacity>
           </>)}
         </Animated.View>
       </ScrollView>
-      <Modal visible={showAnalysis} transparent animationType="fade"><View style={styles.modalOverlay}><View style={[styles.modalCard, isDark && { backgroundColor:'#2A2A2A' }]}><Sparkles size={40} stroke="#A855F7" style={{ alignSelf:'center', marginBottom:16 }} /><Text style={[styles.modalTitle, isDark && { color:'#FFF' }]}>{isAr ? 'تم تحليل شخصيتك!' : 'Your Personality Analysis!'}</Text>
-        {analysisResult && (<><View style={styles.traitsRow}><View style={[styles.traitCard, { borderColor: TRAIT_INFO[analysisResult.dominant]?.color }]}><Text style={styles.traitEmoji}>{TRAIT_INFO[analysisResult.dominant]?.emoji}</Text><Text style={[styles.traitLabel, isDark && { color:'#FFF' }]}>{isAr ? TRAIT_INFO[analysisResult.dominant]?.ar : TRAIT_INFO[analysisResult.dominant]?.en}</Text><Text style={styles.traitType}>{isAr ? 'الأساسي' : 'Primary'}</Text></View><View style={[styles.traitCard, { borderColor: TRAIT_INFO[analysisResult.secondary]?.color }]}><Text style={styles.traitEmoji}>{TRAIT_INFO[analysisResult.secondary]?.emoji}</Text><Text style={[styles.traitLabel, isDark && { color:'#FFF' }]}>{isAr ? TRAIT_INFO[analysisResult.secondary]?.ar : TRAIT_INFO[analysisResult.secondary]?.en}</Text><Text style={styles.traitType}>{isAr ? 'الثانوي' : 'Secondary'}</Text></View></View><Text style={[styles.modalSubtext, isDark && { color:'#CCC' }]}>{isAr ? 'فهم شخصيتك يساعدني في أن أكون أقرب إليك 💜' : 'Understanding your personality helps me be closer to you 💜'}</Text></>)}
-        <TouchableOpacity style={styles.modalBtn} onPress={handleContinueToChat}><Check size={20} stroke="#FFF" /><Text style={styles.modalBtnText}>{isAr ? 'ابدأ المحادثة' : 'Start Chat'}</Text></TouchableOpacity></View></View></Modal>
+      <Modal visible={showAnalysis} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, isDark && { backgroundColor:'#2A2A2A' }]}>
+            <Sparkles size={40} stroke="#A855F7" style={{ alignSelf:'center', marginBottom:16 }} />
+            <Text style={[styles.modalTitle, isDark && { color:'#FFF' }]}>{isAr ? 'تم تحليل شخصيتك!' : 'Your Personality Analysis!'}</Text>
+            {analysisResult && (<>
+              <View style={styles.traitsRow}>
+                <View style={[styles.traitCard, { borderColor: TRAIT_INFO[analysisResult.dominant]?.color }]}><Text style={styles.traitEmoji}>{TRAIT_INFO[analysisResult.dominant]?.emoji}</Text><Text style={[styles.traitLabel, isDark && { color:'#FFF' }]}>{isAr ? TRAIT_INFO[analysisResult.dominant]?.ar : TRAIT_INFO[analysisResult.dominant]?.en}</Text><Text style={styles.traitType}>{isAr ? 'الأساسي' : 'Primary'}</Text></View>
+                <View style={[styles.traitCard, { borderColor: TRAIT_INFO[analysisResult.secondary]?.color }]}><Text style={styles.traitEmoji}>{TRAIT_INFO[analysisResult.secondary]?.emoji}</Text><Text style={[styles.traitLabel, isDark && { color:'#FFF' }]}>{isAr ? TRAIT_INFO[analysisResult.secondary]?.ar : TRAIT_INFO[analysisResult.secondary]?.en}</Text><Text style={styles.traitType}>{isAr ? 'الثانوي' : 'Secondary'}</Text></View>
+              </View>
+              <Text style={[styles.modalSubtext, isDark && { color:'#CCC' }]}>{isAr ? 'فهم شخصيتك يساعدني في أن أكون أقرب إليك 💜' : 'Understanding your personality helps me be closer to you 💜'}</Text>
+            </>)}
+            <TouchableOpacity style={styles.modalBtn} onPress={handleContinueToChat}><Check size={20} stroke="#FFF" /><Text style={styles.modalBtnText}>{isAr ? 'ابدأ المحادثة' : 'Start Chat'}</Text></TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
-  safe: { flex: 1 }, scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
+  safe: { flex: 1 },
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
   card: { backgroundColor: '#FFF', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#F0F0F0', elevation: 2 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  progressBar: { flexDirection: 'row', gap: 6 }, dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0D9F5' }, dotActive: { backgroundColor: '#6B21A8', width: 24 },
-  skipBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 }, skipText: { color: '#6B21A8', fontWeight: '600', fontSize: 14 },
+  progressBar: { flexDirection: 'row', gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0D9F5' },
+  dotActive: { backgroundColor: '#6B21A8', width: 24 },
+  skipBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  skipText: { color: '#6B21A8', fontWeight: '600', fontSize: 14 },
   question: { fontSize: 18, fontWeight: '700', color: '#1A1A1A', textAlign: 'center', marginBottom: 20 },
-  option: { padding: 16, borderRadius: 12, borderWidth: 1.5, borderColor: '#E0D9F5', marginBottom: 10 }, selectedOption: { borderColor: '#6B21A8', backgroundColor: '#F3F0FF' },
+  option: { padding: 16, borderRadius: 12, borderWidth: 1.5, borderColor: '#E0D9F5', marginBottom: 10 },
+  selectedOption: { borderColor: '#6B21A8', backgroundColor: '#F3F0FF' },
   optionText: { fontSize: 15, color: '#1A1A1A', textAlign: 'center' },
-  backBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16, gap: 6 }, backText: { color: '#6B21A8', fontWeight: '600' },
+  backBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16, gap: 6 },
+  backText: { color: '#6B21A8', fontWeight: '600' },
   title: { fontSize: 22, fontWeight: '800', color: '#1A1A1A', textAlign: 'center', marginBottom: 16 },
   label: { fontSize: 14, fontWeight: '600', color: '#666', marginBottom: 8, marginTop: 12 },
   input: { backgroundColor: '#F8F6F2', borderRadius: 12, padding: 14, fontSize: 15, color: '#1A1A1A', borderWidth: 1, borderColor: '#E0D9F5', marginBottom: 8 },
-  genderRow: { flexDirection: 'row', gap: 12, marginBottom: 8 }, genderBtn: { flex: 1, padding: 16, borderRadius: 12, borderWidth: 1.5, borderColor: '#E0D9F5', alignItems: 'center', gap: 8 }, genderBtnActive: { borderColor: '#6B21A8', backgroundColor: '#F3F0FF' },
-  genderEmoji: { fontSize: 24 }, genderText: { fontSize: 15, fontWeight: '600', color: '#666' }, genderTextActive: { color: '#6B21A8' },
+  genderRow: { flexDirection: 'row', gap: 12, marginBottom: 8 },
+  genderBtn: { flex: 1, padding: 16, borderRadius: 12, borderWidth: 1.5, borderColor: '#E0D9F5', alignItems: 'center', gap: 8 },
+  genderBtnActive: { borderColor: '#6B21A8', backgroundColor: '#F3F0FF' },
+  genderEmoji: { fontSize: 24 },
+  genderText: { fontSize: 15, fontWeight: '600', color: '#666' },
+  genderTextActive: { color: '#6B21A8' },
   textArea: { backgroundColor: '#F8F6F2', borderRadius: 12, padding: 14, fontSize: 15, color: '#1A1A1A', borderWidth: 1, borderColor: '#E0D9F5', minHeight: 100, textAlignVertical: 'top', marginBottom: 20 },
-  submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6B21A8', padding: 16, borderRadius: 12, gap: 8 }, submitText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' }, modalCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 28, margin: 24, alignItems: 'center' },
+  submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6B21A8', padding: 16, borderRadius: 12, gap: 8 },
+  submitText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
+  modalCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 28, margin: 24, alignItems: 'center' },
   modalTitle: { fontSize: 22, fontWeight: '800', color: '#1A1A1A', textAlign: 'center', marginBottom: 20 },
-  traitsRow: { flexDirection: 'row', gap: 16, marginBottom: 20 }, traitCard: { flex: 1, alignItems: 'center', padding: 16, borderRadius: 16, borderWidth: 2 },
-  traitEmoji: { fontSize: 40, marginBottom: 8 }, traitLabel: { fontSize: 16, fontWeight: '700', color: '#1A1A1A', textAlign: 'center' }, traitType: { fontSize: 12, color: '#888', marginTop: 4 },
+  traitsRow: { flexDirection: 'row', gap: 16, marginBottom: 20 },
+  traitCard: { flex: 1, alignItems: 'center', padding: 16, borderRadius: 16, borderWidth: 2 },
+  traitEmoji: { fontSize: 40, marginBottom: 8 },
+  traitLabel: { fontSize: 16, fontWeight: '700', color: '#1A1A1A', textAlign: 'center' },
+  traitType: { fontSize: 12, color: '#888', marginTop: 4 },
   modalSubtext: { fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20 },
-  modalBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6B21A8', padding: 16, borderRadius: 14, gap: 8, width: '100%' }, modalBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
+  modalBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6B21A8', padding: 16, borderRadius: 14, gap: 8, width: '100%' },
+  modalBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
 });

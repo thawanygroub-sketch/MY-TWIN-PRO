@@ -1,14 +1,23 @@
-"""
-MyTwin API v10.4 – كافة الأدوات مفعلة
-Tier 1: YouTube, Spotify, Weather, Google, Memory, Calendar
-Tier 2: News, Maps, Location, Currency, Home Assistant
-Tier 3: Email, Telegram, Notes, Tasks
-"""
 import os, asyncio, logging, json
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List, Any
+
+# ✅ إعداد Sentry مبكراً (قبل أي شيء)
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN", ""),
+        integrations=[FastApiIntegration(transaction_style="endpoint")],
+        traces_sample_rate=0.3,
+        environment=os.getenv("ENVIRONMENT", "production"),
+    )
+except Exception:
+    pass
+
 from fastapi import FastAPI, HTTPException, Request, Depends, Header
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -25,7 +34,7 @@ from message_limits import (
     get_usage_summary, get_tier_features, activate_referral_bonus,
     add_referral_tok_bonus
 )
-from external_services import (
+from tools.external_services import (
     search_youtube, search_spotify, get_weather,
     get_todoist_tasks, get_calendar_events,
     get_news, get_location_info, get_knowledge,
@@ -38,6 +47,7 @@ from referral import generate_referral_code, activate_referral
 from proactive_engine import proactive_engine
 from dream_engine import analyze_dream
 from growth_tracker import get_growth_history
+from response_validator import response_validator
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -63,7 +73,7 @@ ALLOWED_ORIGINS = [
     "exp://192.168.1.1:19000"
 ]
 
-app = FastAPI(title="MyTwin API", version="10.4.0")
+app = FastAPI(title="MyTwin API", version="10.6.0")
 app.include_router(telegram_router)
 
 @app.on_event("startup")
@@ -74,7 +84,6 @@ app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
-# المصادقة
 def get_user(auth: str = Header(default=None, alias="Authorization")) -> Optional[str]:
     if not auth or not auth.startswith("Bearer "):
         raise HTTPException(401, "unauthorized")
@@ -144,7 +153,8 @@ async def chat(
             dims=body.relationship_dims, memories=[], history=body.history[-10:],
             calm=is_calm, personality=None, country_code=country_code,
             user_id=uid, tier=tier, join_date=signup_date,
-            recent_messages=[h.get("content", "") for h in body.history[-20:] if isinstance(h, dict)]
+            recent_messages=[h.get("content", "") for h in body.history[-20:] if isinstance(h, dict)],
+            user_profile=p
         )
         if not isinstance(res, dict):
             res = {"reply": "حدث خطأ تقني مؤقت 💜", "provider": "error_handler"}
@@ -154,7 +164,10 @@ async def chat(
         logger.error(f"Critical Brain Error: {e}")
         res = {"reply": "أواجه ضغطاً تقنياً 💜", "provider": "exception_handler"}
 
-    # تحديث last_active تلقائياً بعد كل محادثة
+    validation = response_validator.validate(reply=res.get("reply", ""))
+    if validation.get("repaired"):
+        res["reply"] = validation.get("final_reply", res.get("reply", ""))
+
     try:
         db.table("profiles").update({"last_active": datetime.now(timezone.utc).isoformat()}).eq("id", uid).execute()
     except:
@@ -202,7 +215,6 @@ async def cron_proactive(req: Request):
 
 @app.post("/api/proactive/trigger")
 async def trigger_proactive_manual(uid: str = Depends(get_user)):
-    """تشغيل proactive لمستخدم واحد يدويًا (للاختبار)."""
     p = get_profile(uid)
     if proactive_engine.should_send_proactive(uid):
         msg = await proactive_engine.generate_proactive_message(uid, p.get("twin_name", "صديقي"), p.get("lang", "ar"))
@@ -338,54 +350,11 @@ async def create_task_endpoint(title: str, due: Optional[str] = None, uid: str =
 # ========== صحة ==========
 @app.get("/")
 async def root():
-    return {"status": "ok", "version": "10.4.0"}
+    return {"status": "ok", "version": "10.6.0"}
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
-
-@app.get("/api/health/ai")
-async def ai_health_check():
-    results = {}
-    try:
-        from openai import OpenAI
-        groq_key = os.getenv("GROQ_API_KEY")
-        if not groq_key:
-            results["groq"] = {"status": "❌ مفتاح مفقود"}
-        else:
-            client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key)
-            resp = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"user","content":"Hi"}], max_tokens=5, timeout=8)
-            results["groq"] = {"status": "✅ يعمل", "response": resp.choices[0].message.content[:50]}
-    except Exception as e:
-        results["groq"] = {"status": "❌ فشل", "error": str(e)[:100]}
-    try:
-        or_key = os.getenv("OPENROUTER_API_KEY")
-        if not or_key:
-            results["openrouter"] = {"status": "❌ مفتاح مفقود"}
-        else:
-            client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=or_key)
-            resp = client.chat.completions.create(model="meta-llama/llama-4-maverick", messages=[{"role":"user","content":"Hi"}], max_tokens=5, timeout=8)
-            results["openrouter"] = {"status": "✅ يعمل", "response": resp.choices[0].message.content[:50]}
-    except Exception as e:
-        results["openrouter"] = {"status": "❌ فشل", "error": str(e)[:100]}
-    try:
-        import google.generativeai as genai
-        gemini_key = os.getenv("GEMINI_API_KEY")
-        if not gemini_key:
-            results["gemini"] = {"status": "❌ مفتاح مفقود"}
-        else:
-            genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel("gemini-2.5-flash")
-            resp = model.generate_content("Hi", generation_config=genai.GenerationConfig(max_output_tokens=5))
-            results["gemini"] = {"status": "✅ يعمل", "response": resp.text[:50]}
-    except Exception as e:
-        results["gemini"] = {"status": "❌ فشل", "error": str(e)[:100]}
-    return results
-
-@app.delete("/api/account")
-async def del_acc(uid: str = Depends(get_user)):
-    db.table("profiles").delete().eq("id", uid).execute()
-    return {"status": "deleted"}
 
 @app.get("/api/stats")
 async def get_ai_stats(uid: str = Depends(get_user)):
@@ -403,13 +372,15 @@ async def check_limits(uid: str = Depends(get_user), feature: str = ""):
 @app.post("/api/image/generate")
 async def generate_image(prompt: str = "A beautiful sunset", uid: str = Depends(get_user)):
     try:
-        import google.generativeai as genai
+        from google import genai
         image_key = os.getenv("GEMINI_IMAGE_API_KEY")
         if not image_key:
             return {"status": "error", "message": "Image API key not configured"}
-        genai.configure(api_key=image_key)
-        model = genai.GenerativeModel("gemini-2.5-flash-image")
-        response = model.generate_content(prompt)
+        client = genai.Client(api_key=image_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-image",
+            contents=prompt,
+        )
         if response.parts and hasattr(response.parts[0], 'inline_data'):
             return {"status": "success", "image_base64": response.parts[0].inline_data.data}
         return {"status": "error", "message": "No image generated"}

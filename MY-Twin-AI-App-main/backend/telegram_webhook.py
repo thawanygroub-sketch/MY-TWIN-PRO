@@ -117,22 +117,22 @@ async def telegram_webhook(request: Request):
         
         if text.startswith("/weather") or "طقس" in msg_lower:
             city = text.replace("/weather", "").strip() or "Cairo"
-            from external_services import get_weather
+            from tools.external_services import get_weather
             tool_result = await get_weather(city=city)
         elif text.startswith("/news") or "أخبار" in msg_lower:
-            from external_services import get_news
+            from tools.external_services import get_news
             tool_result = await get_news()
         elif text.startswith("/youtube") or "يوتيوب" in msg_lower:
             query = text.replace("/youtube", "").strip() or text
-            from external_services import search_youtube
+            from tools.external_services import search_youtube
             tool_result = await search_youtube(query)
         elif text.startswith("/spotify") or "سبوتيفاي" in msg_lower:
             query = text.replace("/spotify", "").strip() or text
-            from external_services import search_spotify
+            from tools.external_services import search_spotify
             tool_result = await search_spotify(query)
         elif text.startswith("/search") or "بحث" in msg_lower:
             query = text.replace("/search", "").strip() or text
-            from external_services import search_google
+            from tools.external_services import search_google
             tool_result = await search_google(query)
 
         if tool_result:

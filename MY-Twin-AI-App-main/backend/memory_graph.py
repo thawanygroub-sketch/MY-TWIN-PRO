@@ -1,6 +1,3 @@
-"""
-MyTwin – Unified Memory System v5.1 (مستقر للإنتاج)
-"""
 import os, logging, json, asyncio, re
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
@@ -12,170 +9,106 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 db: Optional[Client] = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
+def _ensure_indexes():
+    if db:
+        try:
+            db.query("CREATE INDEX IF NOT EXISTS idx_memories_user_created ON memories(user_id, created_at DESC)").execute()
+            db.query("CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(user_id, importance DESC)").execute()
+            db.query("CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(user_id, memory_type)").execute()
+            logger.info("✅ فهارس الذاكرة جاهزة")
+        except: pass
+
+_ensure_indexes()
+
+_cache: Dict[str, List[Dict]] = {}
+_cache_time: Dict[str, datetime] = {}
+CACHE_TTL = 60
+
 def _get_ai_client():
     try:
         from multi_ai import MultiAIClient
         return MultiAIClient()
-    except:
-        return None
+    except: return None
 
-async def _calculate_memory_importance(text: str) -> Dict[str, Any]:
-    text_lower = text.lower()
-    rules = {
-        "core": {"keywords": ["اسمي", "أنا", "عمري", "مهنتي", "my name", "i am", "i live in", "i work as"], "base_importance": 0.9},
-        "goal": {"keywords": ["أريد", "هدفي", "my goal", "i want to", "i plan to"], "base_importance": 0.8},
-        "relationship": {"keywords": ["صديقي", "أمي", "أبي", "زوجتي", "my friend", "my mother", "my father"], "base_importance": 0.8},
-        "emotional": {"keywords": ["سعيد", "حزين", "خائف", "غاضب", "happy", "sad", "scared", "angry"], "base_importance": 0.6},
-        "preference": {"keywords": ["أحب", "أكره", "أفضل", "i love", "i hate", "i prefer", "i like"], "base_importance": 0.5},
-        "daily": {"keywords": ["اليوم", "أكلت", "ذهبت", "today", "ate", "went"], "base_importance": 0.2}
-    }
-    max_importance = 0.1
-    memory_type = "daily"
-    for mem_type, config in rules.items():
-        for keyword in config["keywords"]:
-            if keyword in text_lower:
-                if config["base_importance"] > max_importance:
-                    max_importance = config["base_importance"]
-                    memory_type = mem_type
-    if max_importance < 0.5 and len(text) > 30:
-        client = _get_ai_client()
-        if client:
-            try:
-                prompt = f"""صنف هذه الذكرى وأعد ONLY JSON: {{"type": "...", "importance": 0.X}}
-الذكرى: "{text}"
-JSON:"""
-                result = await client.get_best_reply(prompt, task="deep_reasoning")
-                if result:
-                    match = re.search(r'\{[^}]+\}', result)
-                    if match:
-                        data = json.loads(match.group())
-                        memory_type = data.get("type", memory_type)
-                        max_importance = float(data.get("importance", max_importance))
-            except:
-                pass
-    return {"type": memory_type, "importance": min(max_importance, 1.0)}
-
-async def store_mem(uid: str, content: str, importance: float = 0.5, emotion: str = "neutral"):
-    if not db:
-        return
+async def store_mem(uid, content, importance=0.5, emotion="neutral"):
+    if not db: return
     try:
-        scoring = await _calculate_memory_importance(content)
-        mem_type = scoring["type"]
-        final_importance = scoring["importance"] if importance == 0.5 else importance
-        db.table("memories").insert({
-            "user_id": uid, "content": content, "importance": final_importance,
-            "emotion": emotion, "memory_type": mem_type,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
-        logger.info(f"✅ Memory stored [{mem_type}] imp={final_importance:.2f}: {content[:50]}...")
-    except Exception as e:
-        logger.error(f"Memory store error: {e}")
+        db.table("memories").insert({"user_id":uid,"content":content,"importance":importance,"emotion":emotion,"memory_type":"daily","created_at":datetime.now(timezone.utc).isoformat()}).execute()
+        if uid in _cache: del _cache[uid]
+    except Exception as e: logger.error(f"Memory store error: {e}")
 
-async def retrieve_memories(uid: str, query: str = "", days: int = 30, lim: int = 5, memory_type: Optional[str] = None) -> List[Dict[str, Any]]:
-    if not db:
-        return []
+async def retrieve_memories(uid: str, query="", days=30, lim=5, memory_type=None) -> List[Dict]:
+    if not db: return []
+    cache_key = f"{uid}:{memory_type}:{lim}"
+    if cache_key in _cache and (datetime.now() - _cache_time.get(cache_key, datetime.min)).seconds < CACHE_TTL:
+        return _cache[cache_key]
     try:
-        req = db.table("memories").select("*").eq("user_id", uid).order("importance", desc=True).order("created_at", desc=True).limit(lim)
-        if memory_type:
-            req = req.eq("memory_type", memory_type)
-        if days > 0:
-            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-            req = req.gte("created_at", cutoff)
+        req = db.table("memories").select("*").eq("user_id",uid).order("importance",desc=True).order("created_at",desc=True).limit(lim)
+        if memory_type: req = req.eq("memory_type",memory_type)
+        if days > 0: req = req.gte("created_at",(datetime.now(timezone.utc) - timedelta(days=days)).isoformat())
         res = req.execute()
-        return res.data or []
+        _cache[cache_key] = res.data or []
+        _cache_time[cache_key] = datetime.now()
+        return _cache[cache_key]
     except Exception as e:
         logger.error(f"Memory retrieval error: {e}")
         return []
 
-async def cleanup_weak_memories(uid: str):
-    if not db:
-        return
+async def cleanup_weak_memories(uid):
+    if not db: return
     try:
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-        db.table("memories").delete().eq("user_id", uid).lt("importance", 0.15).lt("created_at", cutoff).execute()
-        logger.info(f"🧹 Weak memories cleaned for {uid}")
-    except Exception as e:
-        logger.warning(f"Memory cleanup failed: {e}")
+        db.table("memories").delete().eq("user_id",uid).lt("importance",0.15).lt("created_at",(datetime.now(timezone.utc) - timedelta(days=30)).isoformat()).execute()
+    except: pass
 
 async def get_memory_context(uid: str) -> str:
-    """بناء سياق منظم للذاكرة – يحمي من None دائماً"""
-    if not db:
-        return ""
+    if not db: return ""
     try:
         core = await retrieve_memories(uid, memory_type="core", lim=3)
         goals = await retrieve_memories(uid, memory_type="goal", lim=3)
         emotional = await retrieve_memories(uid, memory_type="emotional", lim=2)
         preferences = await retrieve_memories(uid, memory_type="preference", lim=3)
         relationships = await retrieve_memories(uid, memory_type="relationship", lim=2)
-
         parts = []
-        if core:
-            parts.append("معلومات أساسية: " + " | ".join([m["content"] for m in core]))
-        if goals:
-            parts.append("أهداف: " + " | ".join([m["content"] for m in goals]))
-        if preferences:
-            parts.append("تفضيلات: " + " | ".join([m["content"] for m in preferences]))
-        if relationships:
-            parts.append("علاقات: " + " | ".join([m["content"] for m in relationships]))
-        if emotional:
-            parts.append("لحظات عاطفية: " + " | ".join([m["content"] for m in emotional]))
-
-        # ✅ حماية: التحقق من consciousness_core بأمان تام
+        if core: parts.append("معلومات أساسية: " + " | ".join([m["content"] for m in core]))
+        if goals: parts.append("أهداف: " + " | ".join([m["content"] for m in goals]))
+        if preferences: parts.append("تفضيلات: " + " | ".join([m["content"] for m in preferences]))
+        if relationships: parts.append("علاقات: " + " | ".join([m["content"] for m in relationships]))
+        if emotional: parts.append("لحظات عاطفية: " + " | ".join([m["content"] for m in emotional]))
         try:
             from consciousness_core import consciousness_core
             state = consciousness_core.user_states.get(uid, {})
             reflections = state.get("internal_state", {}).get("reflection_log", [])
-            if reflections and len(reflections) > 0:
-                last_reflection = reflections[-1].get("data", {})
-                learned = last_reflection.get("what_i_learned", "")
-                if learned:
-                    parts.append(f"ما تعلمه التوأم عنك مؤخراً: {learned}")
-        except:
-            pass
-
+            if reflections:
+                last = reflections[-1].get("data", {})
+                if last.get("what_i_learned"): parts.append(f"ما تعلمه التوأم عنك مؤخراً: {last['what_i_learned']}")
+        except: pass
         return "\n".join(parts) if parts else ""
     except Exception as e:
         logger.error(f"Memory context error: {e}")
         return ""
 
-async def extract_entities(user_id: str, message: str, lang: str = "ar"):
-    if not db or not message.strip() or len(message) < 40:
-        return
+async def extract_entities(user_id, message, lang="ar"):
+    if not db or not message.strip() or len(message) < 40: return
     client = _get_ai_client()
-    if not client:
-        return
-    prompt = f"""استخرج الكيانات وأعد ONLY JSON:
-{{"people":[],"preferences":[],"goals":[],"habits":[],"facts":[]}}
-الرسالة: "{message}"
-JSON:"""
+    if not client: return
     try:
-        result = await client.get_best_reply(prompt, task="deep_reasoning")
-        if result:
-            match = re.search(r'\{[^}]+\}', result)
+        r = await client.get_best_reply(f"""استخرج الكيانات وأعد ONLY JSON: {{"people":[],"preferences":[],"goals":[],"habits":[],"facts":[]}}\nالرسالة: "{message}"\nJSON:""", task="deep_reasoning")
+        if r:
+            match = re.search(r'\{[^}]+\}', r)
             if match:
                 entities = json.loads(match.group())
-                for entity_type, items in entities.items():
+                for etype, items in entities.items():
                     for item in items:
-                        db.table("knowledge_entities").insert({
-                            "user_id": user_id, "entity_type": entity_type,
-                            "entity_name": str(item),
-                            "created_at": datetime.now(timezone.utc).isoformat(),
-                        }).execute()
-                logger.info(f"✅ Extracted {sum(len(v) for v in entities.values())} entities for {user_id}")
-    except Exception as e:
-        logger.warning(f"Entity extraction failed: {e}")
+                        db.table("knowledge_entities").insert({"user_id":user_id,"entity_type":etype,"entity_name":str(item),"created_at":datetime.now(timezone.utc).isoformat()}).execute()
+    except: pass
 
 class DeepMemorySystem:
-    def retrieve(self, uid: str, query: str, days: int = 30, lim: int = 5, emotion_filter: Optional[str] = None) -> List[Dict[str, Any]]:
-        if not db:
-            return []
+    def retrieve(self, uid, query, days=30, lim=5, emotion_filter=None) -> List[Dict]:
+        if not db: return []
         try:
-            req = db.table("memories").select("*").eq("user_id", uid).order("created_at", desc=True).limit(lim)
-            if emotion_filter:
-                req = req.eq("emotion", emotion_filter)
-            res = req.execute()
-            return res.data or []
-        except:
-            return []
+            req = db.table("memories").select("*").eq("user_id",uid).order("created_at",desc=True).limit(lim)
+            if emotion_filter: req = req.eq("emotion",emotion_filter)
+            return (req.execute()).data or []
+        except: return []
 
-print("✅ Unified Memory System v5.1 (stable) initialized")
+print("✅ Unified Memory System v5.3 (محسّن مع كاش)")

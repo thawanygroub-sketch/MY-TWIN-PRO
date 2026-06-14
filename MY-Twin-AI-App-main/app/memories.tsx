@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useTwinStore } from '../store/useTwinStore';
 import { supabase } from '../lib/supabase';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { router } from 'expo-router';
 import {
   BrainCircuit, Heart, Star, Target, MessageCircle,
@@ -12,7 +12,6 @@ import {
   Clock, Layers
 } from 'lucide-react-native';
 
-// ── أنواع الأحداث ──────────────────────────────
 const EVENT_CONFIG: Record<string, { icon: any; color: string; label_ar: string; label_en: string }> = {
   memory: { icon: BrainCircuit, color: '#3B82F6', label_ar: 'ذكرى', label_en: 'Memory' },
   dream: { icon: Moon, color: '#8B5CF6', label_ar: 'حلم', label_en: 'Dream' },
@@ -23,7 +22,6 @@ const EVENT_CONFIG: Record<string, { icon: any; color: string; label_ar: string;
   chat: { icon: MessageCircle, color: '#6B21A8', label_ar: 'محادثة', label_en: 'Chat' },
 };
 
-// ─ـ تصنيف الذكريات ─────────────────────────────
 const MEMORY_CATEGORIES: Record<string, { icon: any; color: string; label_ar: string; label_en: string }> = {
   core: { icon: Sparkles, color: '#F59E0B', label_ar: 'أساسية', label_en: 'Core' },
   goal: { icon: Target, color: '#10B981', label_ar: 'هدف', label_en: 'Goal' },
@@ -31,6 +29,7 @@ const MEMORY_CATEGORIES: Record<string, { icon: any; color: string; label_ar: st
   fact: { icon: BrainCircuit, color: '#3B82F6', label_ar: 'معلومة', label_en: 'Fact' },
   preference: { icon: Star, color: '#8B5CF6', label_ar: 'تفضيل', label_en: 'Preference' },
   daily: { icon: MessageCircle, color: '#6366F1', label_ar: 'يومية', label_en: 'Daily' },
+  episodic: { icon: Clock, color: '#EC4899', label_ar: 'أحداث', label_en: 'Episodic' },
 };
 
 export default function MemoriesScreen() {
@@ -39,33 +38,31 @@ export default function MemoriesScreen() {
   const isDark = theme === 'dark';
   const t = (ar: string, en: string) => isAr ? ar : en;
 
-  const [activeTab, setActiveTab] = useState<'memories' | 'timeline'>('memories');
+  const [activeTab, setActiveTab] = useState<'memories' | 'timeline' | 'episodic'>('memories');
   const [memories, setMemories] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+  const [episodic, setEpisodic] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
 
-  // ─ـ جلب البيانات ──────────────────────────────
   const fetchData = useCallback(async (showRefresh = false) => {
     if (!userId) { setLoading(false); return; }
     if (showRefresh) setRefreshing(true); else setLoading(true);
-    setError(null);
     try {
-      const [memoriesRes, dreamsRes, goalsRes, emotionsRes, twinRes] = await Promise.all([
+      const [memoriesRes, dreamsRes, goalsRes, emotionsRes, twinRes, episodicRes] = await Promise.all([
         supabase.from('memories').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
         supabase.from('dreams').select('*').eq('user_id', userId).limit(10),
         supabase.from('goals').select('*').eq('user_id', userId).limit(10),
         supabase.from('emotional_timeline').select('*').eq('user_id', userId).limit(15),
         supabase.from('twin_states').select('bond_level,updated_at').eq('user_id', userId).single(),
+        supabase.from('memories').select('*').eq('user_id', userId).eq('memory_type', 'episodic').order('created_at', { ascending: false }).limit(20),
       ]);
       if (cancelledRef.current) return;
 
-      // ذكريات
       setMemories(memoriesRes.data || []);
+      setEpisodic(episodicRes.data || []);
 
-      // خط زمني
       const all: any[] = [];
       (memoriesRes.data || []).forEach((m: any) => all.push({ id: `mem-${m.id}`, type: 'memory', title: m.content?.slice(0, 60), timestamp: m.created_at }));
       (dreamsRes.data || []).forEach((d: any) => all.push({ id: `dream-${d.id}`, type: 'dream', title: d.content?.slice(0, 60), timestamp: d.created_at }));
@@ -80,24 +77,12 @@ export default function MemoriesScreen() {
       }
       all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setEvents(all);
-    } catch (e) {
-      if (!cancelledRef.current) setError(t('فشل تحميل البيانات', 'Failed to load data'));
-    } finally {
-      if (!cancelledRef.current) { setLoading(false); setRefreshing(false); }
-    }
-  }, [userId, isAr]);
+    } catch (e) { console.error(e); }
+    finally { if (!cancelledRef.current) { setLoading(false); setRefreshing(false); } }
+  }, [userId]);
 
   useEffect(() => { cancelledRef.current = false; fetchData(); return () => { cancelledRef.current = true; }; }, [fetchData]);
 
-  // ─ـ حذف ذكرى ──────────────────────────────────
-  const handleDeleteMemory = (id: string) => {
-    Alert.alert(t('حذف', 'Delete'), t('هل أنت متأكد؟', 'Are you sure?'), [
-      { text: t('إلغاء', 'Cancel'), style: 'cancel' },
-      { text: t('حذف', 'Delete'), style: 'destructive', onPress: async () => { await supabase.from('memories').delete().eq('id', id); setMemories(prev => prev.filter(m => m.id !== id)); } }
-    ]);
-  };
-
-  // ─ـ ألوان الثيم ───────────────────────────────
   const bg = isDark ? '#1A1A1A' : '#F8F6F2';
   const card = isDark ? '#2A2A2A' : '#FFF';
   const border = isDark ? '#444' : '#F0F0F0';
@@ -105,7 +90,6 @@ export default function MemoriesScreen() {
   const sub = isDark ? '#888' : '#666';
   const primary = isDark ? '#D8B4FE' : '#6B21A8';
 
-  // ─ـ شاشة التحميل ──────────────────────────────
   if (loading) {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: bg }]}>
@@ -116,116 +100,87 @@ export default function MemoriesScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: bg }]}>
-      {/* Header */}
       <View style={[styles.header, { borderBottomColor: border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={24} stroke={txt} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: txt }]}>
-          {t('ذكرياتنا', 'Our Memories')}
-        </Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><ArrowLeft size={24} stroke={txt} /></TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: txt }]}>{t('ذكرياتنا', 'Our Memories')}</Text>
         <View style={styles.backBtn} />
       </View>
 
-      {/* تبويبات */}
       <View style={[styles.tabs, { borderBottomColor: border }]}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'memories' && { borderBottomColor: primary, borderBottomWidth: 2 }]}
-          onPress={() => setActiveTab('memories')}
-        >
-          <BrainCircuit size={18} stroke={activeTab === 'memories' ? primary : sub} />
-          <Text style={[styles.tabText, { color: activeTab === 'memories' ? primary : sub }]}>
-            {t('الذكريات', 'Memories')}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'timeline' && { borderBottomColor: primary, borderBottomWidth: 2 }]}
-          onPress={() => setActiveTab('timeline')}
-        >
-          <Clock size={18} stroke={activeTab === 'timeline' ? primary : sub} />
-          <Text style={[styles.tabText, { color: activeTab === 'timeline' ? primary : sub }]}>
-            {t('الخط الزمني', 'Timeline')}
-          </Text>
-        </TouchableOpacity>
+        {[
+          { key: 'memories', icon: BrainCircuit, label: t('الذكريات', 'Memories') },
+          { key: 'timeline', icon: Clock, label: t('الخط الزمني', 'Timeline') },
+          { key: 'episodic', icon: Layers, label: t('الأحداث', 'Episodic') },
+        ].map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.tab, activeTab === tab.key && { borderBottomColor: primary, borderBottomWidth: 2 }]}
+            onPress={() => setActiveTab(tab.key as any)}
+          >
+            <tab.icon size={18} stroke={activeTab === tab.key ? primary : sub} />
+            <Text style={[styles.tabText, { color: activeTab === tab.key ? primary : sub }]}>{tab.label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* المحتوى */}
       {activeTab === 'memories' ? (
         <FlatList
           data={memories}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchData(true)} colors={[primary]} />}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <BrainCircuit size={48} stroke={sub} />
-              <Text style={[styles.emptyText, { color: sub }]}>{t('لا توجد ذكريات', 'No memories yet')}</Text>
-              <Text style={[styles.emptySub, { color: sub }]}>{t('تحدث مع توأمك لإنشاء ذكريات', 'Chat with your Twin to create memories')}</Text>
-            </View>
-          }
+          ListEmptyComponent={<View style={styles.empty}><BrainCircuit size={48} stroke={sub} /><Text style={[styles.emptyText, { color: sub }]}>{t('لا توجد ذكريات', 'No memories yet')}</Text></View>}
           renderItem={({ item }) => {
             const cat = MEMORY_CATEGORIES[item.memory_type] || MEMORY_CATEGORIES.daily;
             const Icon = cat.icon;
-            const color = cat.color;
             return (
-              <TouchableOpacity
-                onLongPress={() => handleDeleteMemory(item.id)}
-                style={[styles.memoryCard, { backgroundColor: card, borderColor: border }]}
-              >
-                <View style={[styles.memoryIcon, { backgroundColor: color + '20' }]}>
-                  <Icon size={16} color={color} />
-                </View>
+              <View style={[styles.memoryCard, { backgroundColor: card, borderColor: border }]}>
+                <View style={[styles.memoryIcon, { backgroundColor: cat.color + '20' }]}><Icon size={16} color={cat.color} /></View>
                 <View style={styles.memoryBody}>
                   <Text style={[styles.memoryContent, { color: txt }]}>{item.content}</Text>
-                  <View style={styles.memoryMeta}>
-                    <Text style={[styles.memoryCategory, { color }]}>
-                      {isAr ? cat.label_ar : cat.label_en}
-                    </Text>
-                    <Text style={[styles.memoryDate, { color: sub }]}>
-                      {new Date(item.created_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
-                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                      })}
-                    </Text>
-                  </View>
+                  <Text style={[styles.memoryDate, { color: sub }]}>{new Date(item.created_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', { month: 'short', day: 'numeric' })}</Text>
                 </View>
-              </TouchableOpacity>
+              </View>
             );
           }}
+        />
+      ) : activeTab === 'episodic' ? (
+        <FlatList
+          data={episodic}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={<View style={styles.empty}><Clock size={48} stroke={sub} /><Text style={[styles.emptyText, { color: sub }]}>{t('لا توجد أحداث', 'No events yet')}</Text></View>}
+          renderItem={({ item }) => (
+            <View style={[styles.memoryCard, { backgroundColor: card, borderColor: border }]}>
+              <View style={[styles.memoryIcon, { backgroundColor: '#EC489920' }]}><Clock size={16} color="#EC4899" /></View>
+              <View style={styles.memoryBody}>
+                <Text style={[styles.memoryContent, { color: txt }]}>{item.content}</Text>
+                <Text style={[styles.memoryDate, { color: sub }]}>{new Date(item.created_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', { month: 'short', day: 'numeric' })}</Text>
+              </View>
+            </View>
+          )}
         />
       ) : (
         <FlatList
           data={events}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchData(true)} colors={[primary]} />}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Clock size={48} stroke={sub} />
-              <Text style={[styles.emptyText, { color: sub }]}>{t('لا توجد أحداث', 'No events yet')}</Text>
-            </View>
-          }
+          ListEmptyComponent={<View style={styles.empty}><Clock size={48} stroke={sub} /><Text style={[styles.emptyText, { color: sub }]}>{t('لا توجد أحداث', 'No events yet')}</Text></View>}
           renderItem={({ item, index }) => {
             const config = EVENT_CONFIG[item.type] || EVENT_CONFIG.chat;
             const Icon = config.icon;
-            const color = config.color;
             const isLast = index === events.length - 1;
             return (
               <View style={[styles.timelineRow, isAr && { flexDirection: 'row-reverse' }]}>
                 <View style={styles.timelineLineCol}>
-                  <View style={[styles.timelineDot, { backgroundColor: color }]} />
+                  <View style={[styles.timelineDot, { backgroundColor: config.color }]} />
                   {!isLast && <View style={[styles.timelineConnector, { backgroundColor: isDark ? '#444' : '#E0D9F5' }]} />}
                 </View>
                 <View style={[styles.timelineCard, { backgroundColor: card, borderColor: border }]}>
-                  <View style={[styles.timelineCardHeader, isAr && { flexDirection: 'row-reverse' }]}>
-                    <View style={[styles.timelineIcon, { backgroundColor: color + '20' }]}>
-                      <Icon size={16} color={color} />
-                    </View>
+                  <View style={styles.timelineCardHeader}>
+                    <View style={[styles.timelineIcon, { backgroundColor: config.color + '20' }]}><Icon size={16} color={config.color} /></View>
                     <Text style={[styles.timelineTitle, { color: txt }]}>{item.title}</Text>
-                    <Text style={[styles.timelineTime, { color: sub }]}>
-                      {new Date(item.timestamp).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
-                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                      })}
-                    </Text>
+                    <Text style={[styles.timelineTime, { color: sub }]}>{new Date(item.timestamp).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', { month: 'short', day: 'numeric' })}</Text>
                   </View>
                 </View>
               </View>
@@ -248,16 +203,11 @@ const styles = StyleSheet.create({
   listContent: { padding: 16, paddingBottom: 40 },
   empty: { alignItems: 'center', marginTop: 60 },
   emptyText: { fontSize: 17, fontWeight: '600', marginTop: 16 },
-  emptySub: { fontSize: 14, marginTop: 6, textAlign: 'center' },
-  // ذكريات
   memoryCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 10, gap: 12 },
   memoryIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   memoryBody: { flex: 1 },
   memoryContent: { fontSize: 15, lineHeight: 22, marginBottom: 6 },
-  memoryMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  memoryCategory: { fontSize: 12, fontWeight: '600' },
   memoryDate: { fontSize: 11 },
-  // خط زمني
   timelineRow: { flexDirection: 'row', marginBottom: 0 },
   timelineLineCol: { alignItems: 'center', width: 32, marginRight: 10 },
   timelineDot: { width: 12, height: 12, borderRadius: 6, marginTop: 4 },

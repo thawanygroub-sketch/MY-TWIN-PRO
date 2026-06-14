@@ -17,12 +17,11 @@ export interface ConsciousnessState {
 export interface ChatMessage {
   id: string; role: 'user' | 'twin'; content: string; image?: string; timestamp: number;
   failed?: boolean; emotion?: string; journeyPhase?: string; relationshipStage?: string;
-  memoryRecall?: boolean; thinkingStage?: string;
-  youtubeVideo?: string;
+  memoryRecall?: boolean; thinkingStage?: string; youtubeVideo?: string;
 }
 
 export interface RelationshipDims {
-  trust: number; attachment: number; comfort: number; openness: number;
+  trust?: number; attachment?: number; comfort?: number; openness?: number;
   romantic: number; humor: number; attStyle: number;
   empathy?: number; support?: number; communication?: number;
   affection?: number; dependency?: number;
@@ -81,11 +80,15 @@ export interface TwinStore {
   totalMinutes: number; setTotalMinutes: (val: number) => void;
   streakDays: number; setStreakDays: (val: number) => void;
 
-  // ✅ حقول جديدة للطاقة والرسائل
   dailyMessagesUsed: number; setDailyMessagesUsed: (val: number) => void;
   dailyMessagesLimit: number; setDailyMessagesLimit: (val: number) => void;
   twinEnergy: number; setTwinEnergy: (val: number) => void;
   personalityTraits: { dominant: string; secondary: string } | null; setPersonalityTraits: (traits: any) => void;
+
+  // ✅ تفضيلات جديدة لـ Preference Engine 100%
+  favoriteTopics: string[]; setFavoriteTopics: (topics: string[]) => void;
+  preferredResponseLength: 'short' | 'medium' | 'long'; setPreferredResponseLength: (len: 'short' | 'medium' | 'long') => void;
+  tonePreference: 'casual' | 'formal' | 'emotional' | 'humorous'; setTonePreference: (tone: 'casual' | 'formal' | 'emotional' | 'humorous') => void;
 
   triggerHaptic: () => void; logout: () => void;
 }
@@ -105,6 +108,7 @@ const initialState = {
   menuVisible: false, hasUsedTrial: false, twinTraits: [] as string[],
   totalMessages: 0, totalMinutes: 0, streakDays: 0,
   dailyMessagesUsed: 0, dailyMessagesLimit: 15, twinEnergy: 100, personalityTraits: null,
+  favoriteTopics: [], preferredResponseLength: 'medium' as const, tonePreference: 'emotional' as const,
 };
 
 export const useTwinStore = create<TwinStore>()(persist((set, get) => ({
@@ -133,7 +137,7 @@ export const useTwinStore = create<TwinStore>()(persist((set, get) => ({
   setThinking: (val) => set({ isThinking: val }),
   setThinkingStage: (stage) => set({ thinkingStage: stage }),
 
-  addMessage: (msg) => set((state) => ({ chatHistory: [...state.chatHistory, {
+  addMessage: async (msg) => set((state) => ({ chatHistory: [...state.chatHistory, {
     id: msg.id || generateId(), role: msg.role || 'user', content: msg.content || '',
     image: msg.image || undefined, timestamp: msg.timestamp || Date.now(),
     failed: msg.failed || false, emotion: msg.emotion || undefined,
@@ -167,11 +171,15 @@ export const useTwinStore = create<TwinStore>()(persist((set, get) => ({
   setTotalMinutes: (val) => set({ totalMinutes: val }),
   setStreakDays: (val) => set({ streakDays: val }),
 
-  // ✅ دوال جديدة
   setDailyMessagesUsed: (val) => set({ dailyMessagesUsed: val }),
   setDailyMessagesLimit: (val) => set({ dailyMessagesLimit: val }),
   setTwinEnergy: (val) => set({ twinEnergy: val }),
   setPersonalityTraits: (traits) => set({ personalityTraits: traits }),
+
+  // ✅ دوال تفضيلات جديدة
+  setFavoriteTopics: (topics) => set({ favoriteTopics: topics }),
+  setPreferredResponseLength: (len) => set({ preferredResponseLength: len }),
+  setTonePreference: (tone) => set({ tonePreference: tone }),
 
   triggerHaptic: () => { if (!get().calmMode) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); },
   logout: () => set({ ...initialState, chatHistory: [] }),
@@ -193,5 +201,7 @@ export const useTwinStore = create<TwinStore>()(persist((set, get) => ({
     totalMessages: state.totalMessages, totalMinutes: state.totalMinutes, streakDays: state.streakDays,
     dailyMessagesUsed: state.dailyMessagesUsed, dailyMessagesLimit: state.dailyMessagesLimit,
     twinEnergy: state.twinEnergy, personalityTraits: state.personalityTraits,
+    favoriteTopics: state.favoriteTopics, preferredResponseLength: state.preferredResponseLength,
+    tonePreference: state.tonePreference,
   }),
 }));
