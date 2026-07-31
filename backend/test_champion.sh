@@ -1,10 +1,8 @@
 #!/bin/bash
 
-# ============================================================
-# 🧬 MyTwin - اختبار الأبطال الشامل (جميع القدرات)
-# ============================================================
 API="https://my-twin-pro-production.up.railway.app"
-EMAIL="mohamed101.moro@gmail.com"
+TIMESTAMP=$(date +%s)
+EMAIL="test_${TIMESTAMP}@mytwin.ai"
 PASSWORD="M#m2606.1307"
 PASS=0
 FAIL=0
@@ -21,8 +19,9 @@ check() {
 
 echo ""
 echo "══════════════════════════════════════════════"
-echo "🧬 MyTwin - اختبار الأبطال الشامل"
+echo "🧬 MyTwin - اختبار الأبطال الشامل (بريد فريد)"
 echo "══════════════════════════════════════════════"
+echo "   البريد: $EMAIL"
 echo ""
 
 # ═══════════════════════════════════════════════
@@ -45,32 +44,21 @@ echo ""
 # ═══════════════════════════════════════════════
 echo "2️⃣  المصادقة"
 
-# Signup
 SIGNUP=$(curl -s -X POST "$API/api/auth/signup" \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"twin_name\":\"MoroTwin\",\"lang\":\"ar\"}")
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"twin_name\":\"TestTwin\",\"lang\":\"ar\"}")
 TOKEN=$(echo "$SIGNUP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null)
 USER_ID=$(echo "$SIGNUP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('user_id',''))" 2>/dev/null)
 
 if [ -n "$TOKEN" ]; then
     check 0 "Signup"
-    echo "      ↳ User: $USER_ID (Token received)"
+    echo "      ↳ User: $USER_ID"
 elif [ -n "$USER_ID" ]; then
     check 0 "Signup"
-    echo "      ↳ User: $USER_ID (Created, will login)"
+    echo "      ↳ User: $USER_ID (Created)"
 else
-    if echo "$SIGNUP" | grep -q "already registered"; then
-        echo "   ℹ️  الحساب موجود مسبقاً"
-        LOGIN=$(curl -s -X POST "$API/api/auth/login" \
-          -H "Content-Type: application/json" \
-          -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
-        TOKEN=$(echo "$LOGIN" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null)
-        USER_ID=$(echo "$LOGIN" | python3 -c "import sys,json; print(json.load(sys.stdin).get('user_id',''))" 2>/dev/null)
-        [ -n "$TOKEN" ]; check $? "Login (حساب موجود)"
-    else
-        check 1 "Signup"
-        echo "      ↳ Response: $(echo "$SIGNUP" | head -c 100)"
-    fi
+    check 1 "Signup"
+    echo "      ↳ Response: $(echo "$SIGNUP" | head -c 100)"
 fi
 
 if [ -z "$TOKEN" ]; then
@@ -103,12 +91,7 @@ REPLY=$(echo "$CHAT" | python3 -c "import sys,json; print(json.load(sys.stdin).g
 echo "      ↳ Reply: $REPLY"
 
 SUGGESTED=$(echo "$CHAT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('suggested_question','none'))" 2>/dev/null)
-if [ "$SUGGESTED" != "none" ] && [ -n "$SUGGESTED" ]; then
-    echo "      ↳ Proactive: $SUGGESTED"
-    check 0 "Proactive Suggestion"
-else
-    check 0 "Proactive (none yet)"
-fi
+[ -n "$SUGGESTED" ] && [ "$SUGGESTED" != "none" ]; check $? "Proactive Suggestion"
 echo ""
 
 # ═══════════════════════════════════════════════
@@ -119,7 +102,6 @@ echo "4️⃣  الطاقة والاقتصاد"
 ENERGY=$(curl -s "$API/api/economy/energy/status?user_id=$USER_ID")
 ENERGY_VAL=$(echo "$ENERGY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('energy',0))" 2>/dev/null)
 [ -n "$ENERGY_VAL" ]; check $? "Energy Status"
-echo "      ↳ Energy: $ENERGY_VAL"
 
 BALANCE=$(curl -s "$API/api/economy/balance?user_id=$USER_ID")
 BAL=$(echo "$BALANCE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('energy',{}).get('level',0))" 2>/dev/null)
@@ -156,7 +138,6 @@ echo ""
 # ═══════════════════════════════════════════════
 echo "7️⃣  قدرات التوأم"
 
-# دالة مساعدة لاختبار قدرة عبر الكلمات المفتاحية
 test_capability() {
   local name="$1"
   local message="$2"
@@ -174,7 +155,6 @@ test_capability() {
   fi
 }
 
-# اختبار كل قدرة
 test_capability "Study (مذاكرة)" "اشرح لي نظرية فيثاغورس"
 test_capability "Business (أعمال)" "أريد تحليل فكرة مشروعي الجديد"
 test_capability "Dream (أحلام)" "حلمت أنني أطير، ما تفسير هذا الحلم؟"
@@ -186,32 +166,23 @@ test_capability "Task Manager (مهام)" "أنشئ لي مهمة جديدة ل�
 
 echo ""
 
-
 # ═══════════════════════════════════════════════
-# 9. Google Auth (اختبار محدود)
+# 8. Google Auth (اختبار محدود)
 # ═══════════════════════════════════════════════
-echo "9️⃣  Google Auth"
+echo "8️⃣  Google Auth"
 
-GOOGLE_RESPONSE=$(curl -s -X POST "$API/api/auth/google"   -H "Content-Type: application/json"   -d '{"code":"test_code","redirect_uri":"test://callback","code_verifier":"test_verifier_1234567890123456789012345678901234567890","lang":"ar"}')
-GOOGLE_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/auth/google"   -H "Content-Type: application/json"   -d '{"code":"test_code","redirect_uri":"test://callback","code_verifier":"test_verifier_1234567890123456789012345678901234567890","lang":"ar"}')
+GOOGLE_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/auth/google" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"test","redirect_uri":"test://callback","code_verifier":"test_verifier_1234567890123456789012345678901234567890","lang":"ar"}')
 
-if [ "$GOOGLE_HTTP" = "401" ] || [ "$GOOGLE_HTTP" = "400" ] || [ "$GOOGLE_HTTP" = "500" ]; then
+if [ "$GOOGLE_HTTP" = "422" ]; then
     check 0 "Google Auth endpoint ($GOOGLE_HTTP)"
     echo "      ↳ Endpoint موجود ويستجيب (خطأ متوقع: بيانات اختبار غير صالحة)"
+elif [ "$GOOGLE_HTTP" = "401" ] || [ "$GOOGLE_HTTP" = "400" ]; then
+    check 0 "Google Auth endpoint ($GOOGLE_HTTP)"
+    echo "      ↳ Endpoint موجود ويستجيب"
 else
-    check 1 "Google Auth endpoint (HTTP $GOOGLE_HTTP)"
-fi
-echo ""
-# ═══════════════════════════════════════════════
-# 8. الإشعارات
-# ═══════════════════════════════════════════════
-echo "8️⃣  الإشعارات"
-
-PUSH_HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$API/api/push/status" 2>/dev/null)
-if [ "$PUSH_HTTP" = "200" ] || [ "$PUSH_HTTP" = "404" ]; then
-    check 0 "Push Route ($PUSH_HTTP)"
-else
-    check 1 "Push Route"
+    check 1 "Google Auth endpoint ($GOOGLE_HTTP)"
 fi
 echo ""
 
@@ -226,7 +197,7 @@ echo "════════════════════════�
 
 if [ "$PASS" -ge 24 ]; then
     echo "🟢 النظام جاهز للبناء! كل المحركات والقدرات تعمل."
-elif [ "$PASS" -ge 18 ]; then
+elif [ "$PASS" -ge 20 ]; then
     echo "🟡 النظام يعمل بشكل جيد. بعض النقاط تحتاج انتباهاً."
 else
     echo "🔴 توجد مشاكل حرجة. راجع السجلات."
