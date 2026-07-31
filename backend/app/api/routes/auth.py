@@ -1,5 +1,5 @@
 """
-Auth Routes v7.2 — مع دعم كامل لـ Google OAuth
+Auth Routes v7.3 — تأكيد تلقائي للبريد + Token فوري
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -52,6 +52,14 @@ async def signup(body: SignupBody):
     try:
         result = db.auth.sign_up({"email": body.email, "password": body.password})
         if result.user:
+            # ✅ تأكيد البريد تلقائياً باستخدام service_role
+            try:
+                service_db.auth.admin.update_user_by_id(result.user.id, {"email_confirm": True})
+                logger.info(f"📧 Email confirmed for {result.user.id}")
+            except Exception as e:
+                logger.warning(f"Could not auto-confirm email: {e}")
+
+            # إنشاء الملف الشخصي
             service_db.table("profiles").insert({
                 "id": result.user.id, "email": body.email,
                 "full_name": body.email.split('@')[0], "twin_name": body.twin_name,
@@ -60,16 +68,18 @@ async def signup(body: SignupBody):
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
 
-            if result.session:
-                await _wake_up_twin(result.user.id, body.lang)
-                return {"token": result.session.access_token, "user_id": result.user.id}
-            
+            # ✅ تسجيل الدخول فوراً بعد إنشاء الحساب
             try:
                 login_result = db.auth.sign_in_with_password({"email": body.email, "password": body.password})
                 if login_result.session:
-                    return {"token": login_result.session.access_token, "user_id": login_result.user.id}
+                    await _wake_up_twin(result.user.id, body.lang)
+                    return {"token": login_result.session.access_token, "user_id": result.user.id}
             except:
                 pass
+            
+            if result.session:
+                await _wake_up_twin(result.user.id, body.lang)
+                return {"token": result.session.access_token, "user_id": result.user.id}
             
             return {"message": "Account created. Please login.", "user_id": result.user.id}
         raise HTTPException(400, "Signup failed")
@@ -81,7 +91,6 @@ async def signup(body: SignupBody):
 @router.post("/google")
 async def google_auth(body: GoogleAuthBody):
     try:
-        # 1. تبادل code بـ access_token من Google
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
                 "https://oauth2.googleapis.com/token",
@@ -95,11 +104,10 @@ async def google_auth(body: GoogleAuthBody):
                 timeout=10.0,
             )
             if token_response.status_code != 200:
-                raise HTTPException(401, f"Google token exchange failed: {token_response.text}")
+                raise HTTPException(401, f"Google token exchange failed")
             token_data = token_response.json()
             access_token = token_data.get("access_token")
 
-        # 2. جلب معلومات المستخدم من Google
         async with httpx.AsyncClient() as client:
             user_response = await client.get(
                 "https://www.googleapis.com/oauth2/v3/userinfo",
@@ -114,7 +122,6 @@ async def google_auth(body: GoogleAuthBody):
             if not email:
                 raise HTTPException(400, "Email not provided by Google")
 
-        # 3. تسجيل الدخول أو إنشاء حساب
         db = get_db()
         service_db = get_service_role_db()
         result = db.auth.sign_in_with_oauth({"provider": "google", "access_token": access_token})
@@ -130,8 +137,6 @@ async def google_auth(body: GoogleAuthBody):
                     "onboarded": False, "last_active": datetime.now(timezone.utc).isoformat(),
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }).execute()
-            else:
-                service_db.table("profiles").update({"email": email, "last_active": datetime.now(timezone.utc).isoformat()}).eq("id", user_id).execute()
             await _wake_up_twin(user_id, body.lang)
             return {"token": result.session.access_token, "user_id": user_id, "is_new": False}
         raise HTTPException(500, "Google authentication failed")
@@ -146,4 +151,4 @@ async def verify_token(user_id: str):
     profile = service_db.table("profiles").select("id").eq("id", user_id).execute()
     return {"valid": bool(profile.data)}
 
-logger.info("✅ Auth Routes v7.2 initialized")
+logger.info("✅ Auth Routes v7.3 initialized — email auto-confirm + immediate login")
