@@ -35,8 +35,20 @@ export class DevicePresenceEngine {
     isNightTime: false, isQuietTime: false,
   };
 
-  start(): void {}
-  stop(): void {}
+  private _isActive: boolean = false;
+
+  // ✅ خاصية isActive المطلوبة
+  get isActive(): boolean {
+    return this._isActive;
+  }
+
+  start(): void {
+    this._isActive = true;
+  }
+
+  stop(): void {
+    this._isActive = false;
+  }
 
   setUserPermission(granted: boolean): void {
     this.sensors.hasUserPermission = granted;

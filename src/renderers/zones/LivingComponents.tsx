@@ -36,7 +36,7 @@ export const LivingPanel = (props: any) => (
 export const LivingStatus = ({ status = 'idle' as Status, variant = 'twin' as Variant }) => {
   const labels: Record<Status, string> = { idle: 'متصل', thinking: 'يفكر...', analyzing: 'يحلل...', learning: 'يتعلم...', remembering: 'يتذكر...', speaking: 'يتحدث...', connecting: 'يربط الذكريات...', planning: 'يبني خطة...', researching: 'يبحث في الذاكرة...' };
   return (
-    <LivingSurface variant={variant}  awarenessLevel="Flow" style={StyleSheet.flatten([st.status, { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }])}>
+    <LivingSurface variant={variant}  style={StyleSheet.flatten([st.status, { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }])}>
       <Sparkles size={14} stroke="#A78BFA" />
       <Text style={{ color: '#A78BFA', fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{labels[status]}</Text>
     </LivingSurface>

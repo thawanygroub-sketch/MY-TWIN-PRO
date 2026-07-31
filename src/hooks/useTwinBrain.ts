@@ -49,7 +49,7 @@ export function useTwinBrain(initialUserId: string = '', initialLang: string = '
     const perception = perceptionEngine.analyze(message);
     worldAwarenessEngine.recordInteraction();
     
-    if (devicePresenceEngine.isActive ? true : false) {
+    if (devicePresenceEngine.isActive) {
       const sensors = devicePresenceEngine.getSensors();
       if (sensors.faceDetected) stateBus.update({ avatar: { ...stateBus.getState().avatar, gazeTarget: 'user' } });
     }

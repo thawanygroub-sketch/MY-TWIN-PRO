@@ -54,8 +54,8 @@ export class SensorBridge {
         console.log('[SensorBridge] Pedometer not available');
       }
 
-      // محاكاة مستوى الصوت (للتطوير فقط، سيتم استبدالها بميكروفون حقيقي)
-      this.startAudioLevelSimulation();
+      // بدء التقاط الصوت (حقيقي أو محاكاة)
+      await this.startAudioCapture();
 
       console.log('[SensorBridge] ✅ All sensors connected');
     } catch (e) {
@@ -63,9 +63,38 @@ export class SensorBridge {
     }
   }
 
+  private async startAudioCapture(): Promise<void> {
+    try {
+      const { Audio } = await import('expo-av');
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.granted) {
+        // نبدأ التسجيل لمراقبة مستوى الصوت فقط
+        const recording = new Audio.Recording();
+        await recording.prepareToRecordAsync((Audio as any).RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
+        await recording.startAsync();
+        this.audioSimInterval = setInterval(async () => {
+          try {
+            const status = await recording.getStatusAsync();
+            if (status.isRecording) {
+              // تحويل metering إلى قيمة بين 0 و 1
+              const level = Math.max(0, Math.min(1, (status.metering || -60) / 60 + 1));
+              devicePresenceEngine.updateAudioLevel(level);
+            }
+          } catch (e) {}
+        }, 500);
+        console.log('[SensorBridge] 🎤 Real audio capture started');
+        return;
+      }
+    } catch (e) {
+      console.log('[SensorBridge] Audio capture not available, falling back to simulation');
+    }
+    // احتياطي: محاكاة مستوى الصوت
+    this.startAudioLevelSimulation();
+  }
+
   private startAudioLevelSimulation(): void {
     this.audioSimInterval = setInterval(() => {
-      const level = 0.1 + Math.random() * 0.4; // قيمة وهمية
+      const level = 0.1 + Math.random() * 0.4;
       devicePresenceEngine.updateAudioLevel(level);
     }, 1000);
   }

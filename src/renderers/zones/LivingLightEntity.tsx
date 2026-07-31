@@ -52,6 +52,7 @@ export default function LivingLightEntity({ isThinking, isSpeaking, isListening,
   const [emotionColor, setEmotionColor] = useState(colors.accent);
   const [currentEmotion, setCurrentEmotion] = useState('neutral');
   const [headTilt, setHeadTilt] = useState(0);
+  const [touchPosition, setTouchPosition] = useState<{x: number, y: number} | null>(null);
   const [weather, setWeather] = useState<'clear'|'rain'|'storm'>('clear');
   const [batteryLow, setBatteryLow] = useState(false);
   const [surpriseActive, setSurpriseActive] = useState(false);
@@ -146,7 +147,18 @@ export default function LivingLightEntity({ isThinking, isSpeaking, isListening,
   const rightEyePath = useDerivedValue(() => generateEyePath(CX + 22, CY - 8, 18 + eyeScale.value * 3, Math.max(1, 10 + eyeScale.value * 2), eyeGazeX.value, eyeGazeY.value));
 
   return (
-    <Pressable onPress={onPress} onLongPress={onLongPress} style={[styles.container, { transform: [{ rotate: `${headTilt}deg` }, { scale: batteryScale }] }]}>
+    <Pressable onPress={onPress} onLongPress={onLongPress}
+      onTouchMove={(e) => {
+        const touch = e.nativeEvent;
+        if (touch) {
+          const centerX = ENTITY_SIZE / 2;
+          const centerY = ENTITY_SIZE / 2;
+          const dx = (touch.pageX - centerX) / centerX * 8;
+          const dy = (touch.pageY - centerY) / centerY * 5;
+          setTouchPosition({ x: dx, y: dy });
+        }
+      }}
+      onTouchEnd={() => setTouchPosition(null)} style={[styles.container, { transform: [{ rotate: `${headTilt}deg` }, { scale: batteryScale }] }]}>
       <Canvas style={{ width: ENTITY_SIZE, height: ENTITY_SIZE }}>
         <Group opacity={batteryOpacity}>
           {/* طبقات الضوء الأساسية */}

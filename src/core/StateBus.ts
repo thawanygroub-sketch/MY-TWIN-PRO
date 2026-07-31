@@ -97,6 +97,32 @@ export class StateBusClass {
     if (arr) arr.forEach(cb => { try { cb(event, data); } catch (e) { console.warn(`[StateBus] ${event}`, e); } });
   }
 
+  // ✅ الدالة المطلوبة لتحديث الحالة من استجابة Unified Brain
+  updateFromUnifiedResponse(response: any): void {
+    if (!response) return;
+    
+    const p = response.presence_state || {};
+    const e = response.twin_emotional_state || {};
+    const r = response.twin_state_update?.relationship || {};
+    const m = response.memory_surfaced;
+    const dna = response.twin_state_update?.personality_dna || {};
+
+    this.applyUpdate({
+      emotion: {
+        primaryEmotion: p.emotion || e.current_emotion || 'neutral',
+        intensity: p.intensity || e.intensity || 0.5,
+        valence: (e.intensity > 0.5 || p.emotion === 'joy') ? 'positive' : (p.emotion === 'sadness' || p.emotion === 'fear' ? 'negative' : 'neutral'),
+        confidence: e.confidence || 0.7, duration: 0, trend: 'stable',
+      },
+      relationship: { bondLevel: r.bond_level || 0, attachmentStyle: 'secure', trustScore: (r.trust || 50) / 100, firstContactTimestamp: null },
+      memory: { lastSurfacedId: m?.id || null, pendingSurfacing: false, recentContext: m?.content || null },
+      spaceEnergy: p.emotion === 'joy' ? 'energetic' : p.emotion === 'sadness' ? 'serene' : p.emotion === 'fear' ? 'tense' : 'tranquil',
+      interfaceState: 'twin',
+      presenceLevel: Math.round(p.intensity * 5) as any,
+      personalityDNA: { ...this.state.personalityDNA, ...dna },
+    });
+  }
+
   reset(): void { this.prevState = { ...this.state }; this.state = { ...DEFAULT_STATE }; this.subscribers.forEach(s => s(this.state, this.prevState)); }
 }
 
