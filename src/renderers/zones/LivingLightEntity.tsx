@@ -50,6 +50,7 @@ const generateEyePath = (centerX: number, centerY: number, eyeWidth: number, eye
 export default function LivingLightEntity({ isThinking, isSpeaking, isListening, onLongPress, onPress }: LivingLightEntityProps) {
   const { colors } = useAppTheme();
   const [emotionColor, setEmotionColor] = useState(colors.accent);
+  const [isReady, setIsReady] = useState(false);
   const [currentEmotion, setCurrentEmotion] = useState('neutral');
   const [headTilt, setHeadTilt] = useState(0);
   const [touchPosition, setTouchPosition] = useState<{x: number, y: number} | null>(null);
@@ -74,6 +75,7 @@ export default function LivingLightEntity({ isThinking, isSpeaking, isListening,
   useEffect(() => {
     const unsub = stateBus.on('presence:state_updated', (_: string, data: any) => {
       if (!data) return;
+      if (!isReady) setIsReady(true);
       breathPhase.value = data.breathPhase || 0;
       focusLevel.value = withTiming(data.focusLevel || 0.5, { duration: 300 });
       energyLevel.value = withTiming(data.energyLevel || 0.5, { duration: 300 });
@@ -159,7 +161,7 @@ export default function LivingLightEntity({ isThinking, isSpeaking, isListening,
         }
       }}
       onTouchEnd={() => setTouchPosition(null)} style={[styles.container, { transform: [{ rotate: `${headTilt}deg` }, { scale: batteryScale }] }]}>
-      <Canvas style={{ width: ENTITY_SIZE, height: ENTITY_SIZE }}>
+      {isReady ? (<Canvas style={{ width: ENTITY_SIZE, height: ENTITY_SIZE }}>
         <Group opacity={batteryOpacity}>
           {/* طبقات الضوء الأساسية */}
           <Circle cx={CX} cy={CY} r={ENTITY_SIZE * 0.5} opacity={0.04 + energyLevel.value * 0.05}>
@@ -188,7 +190,7 @@ export default function LivingLightEntity({ isThinking, isSpeaking, isListening,
           <Path path={leftEyePath} color={emotionColor} opacity={0.9} style="fill" />
           <Path path={rightEyePath} color={emotionColor} opacity={0.9} style="fill" />
         </Group>
-      </Canvas>
+      </Canvas>) : (<View style={{ width: ENTITY_SIZE, height: ENTITY_SIZE, justifyContent: 'center', alignItems: 'center' }}><View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#A855F740' }} /></View>)}
     </Pressable>
   );
 }

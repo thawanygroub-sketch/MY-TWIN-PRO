@@ -231,6 +231,9 @@ export class AudioEngine {
   }
 
   async play(id: string): Promise<void> {
+    if (!this.isInitialized) {
+      await this.init();
+    }
     const config = AUDIO_FILES[id];
     if (!config) {
       console.warn(`[AudioEngine] صوت غير معروف: ${id}`);
