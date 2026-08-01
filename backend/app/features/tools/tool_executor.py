@@ -1,5 +1,5 @@
 """
-Tool Executor v5.0 – منفذ القدرات مع دعم Pipeline
+Tool Executor v5.1 – منفذ القدرات مع دعم Pipeline
 =====================================================
 يدعم: تنفيذ قدرة واحدة أو Pipeline كامل.
 يحتفظ بـ Caching و Timeout.
@@ -20,7 +20,6 @@ class ToolExecutor:
 
         tool_func = CapabilityRegistry.get(tool_name)
         if not tool_func:
-            # الرجوع للسجل القديم
             from app.features.tools.tool_registry import ToolRegistry
             tool_func = ToolRegistry.get_tool(tool_name)
         
@@ -31,7 +30,6 @@ class ToolExecutor:
         cache_key = f"{user_id}:{tool_name}:{message[:50]}"
         if cache_key in _cache:
             cached = _cache[cache_key]
-            await self._save_to_history(user_id, tool_name, result if isinstance(result, str) else str(result)[:500])
             if datetime.now() - cached["time"] < timedelta(seconds=CACHE_TTL):
                 return cached["result"]
 
@@ -39,7 +37,7 @@ class ToolExecutor:
         try:
             result = await asyncio.wait_for(tool_func(user_id, message), timeout=15.0)
             _cache[cache_key] = {"result": result, "time": datetime.now()}
-            await self._save_to_history(user_id, tool_name, result if isinstance(result, str) else str(result)[:500])
+            await self._save_to_history(user_id, tool_name, str(result)[:500] if result else "")
             elapsed = (time.time() - start) * 1000
             CapabilityRegistry.update_health(tool_name, elapsed, True)
             logger.info(f"✅ {tool_name}: {elapsed:.0f}ms")
@@ -61,10 +59,8 @@ class ToolExecutor:
             results.append({"capability": cap, "result": result, "success": result is not None})
         return results
 
-
-tool_executor = ToolExecutor()
-
     async def _save_to_history(self, user_id: str, tool_name: str, result: str):
+        """حفظ نتيجة الأداة في سجل المشاريع"""
         try:
             from app.infrastructure.database.supabase_client import get_db
             db = get_db()
@@ -73,7 +69,11 @@ tool_executor = ToolExecutor()
                     "title": f"أداة: {tool_name}",
                     "type": "tool",
                     "data": {"tool": tool_name, "result": result[:500]},
-                    "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "user_id": user_id
                 }).execute()
-        except: pass
+        except Exception:
+            pass
+
+
+tool_executor = ToolExecutor()

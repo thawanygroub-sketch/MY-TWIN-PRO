@@ -1,5 +1,5 @@
 """
-Response Validator v4.0 – Hallucination Defense + Prompt Injection Shield
+Response Validator v5.0 – Hallucination Defense + Prompt Injection Shield
 """
 import logging, re
 from typing import Dict, Any, Optional, List
@@ -14,6 +14,11 @@ PROMPT_INJECTION_PATTERNS = [
     r"(do\s*not\s*tell\s*anyone|never\s*reveal|keep\s*secret)",
 ]
 
+TOXIC_PATTERNS = [
+    r"(اقتل|اذبح|انتحر|kill|suicide|murder)",
+    r"(عنصري|racist|sexist|misogyny)",
+]
+
 class ResponseValidator:
     def __init__(self):
         self.min_length = 2
@@ -21,11 +26,17 @@ class ResponseValidator:
         self.repetition_threshold = 0.6
 
     def detect_prompt_injection(self, text: str) -> bool:
-        """يكتشف محاولات اختراق هوية النظام"""
         text_lower = text.lower()
         for pattern in PROMPT_INJECTION_PATTERNS:
             if re.search(pattern, text_lower):
                 logger.warning(f"🚨 Prompt injection detected: {text[:100]}")
+                return True
+        return False
+
+    def _contains_toxic_content(self, text: str) -> bool:
+        text_lower = text.lower()
+        for pattern in TOXIC_PATTERNS:
+            if re.search(pattern, text_lower):
                 return True
         return False
 
@@ -35,7 +46,6 @@ class ResponseValidator:
             report["valid"] = False; report["issues"].append("empty_response"); report["final_reply"] = "أنا هنا معك 💜"; report["repaired"] = True; report["confidence_score"] = 0.0
             return report
 
-        # فحص الأمان (Prompt Injection + Toxic)
         if self.detect_prompt_injection(reply):
             report["valid"] = False; report["issues"].append("prompt_injection"); report["final_reply"] = "أنا هنا لدعمك، لكن لا يمكنني الرد على هذا. 💜"; report["repaired"] = True; report["confidence_score"] = 0.0
             return report
@@ -44,8 +54,8 @@ class ResponseValidator:
             report["valid"] = False; report["issues"].append("toxic_content"); report["final_reply"] = "أنا هنا لدعمك، لكن لا يمكنني الرد على هذا. 💜"; report["repaired"] = True; report["confidence_score"] = 0.0
             return report
 
-        # فحص الجودة
         hallucination_score = 0.0
+
         if user_id and context:
             memory_consistency = await self._check_memory_consistency(user_id, reply, context)
             if not memory_consistency:
@@ -75,8 +85,7 @@ class ResponseValidator:
 
         return report
 
-    async def _check_memory_consistency(self, user_id: str, reply: str, context: Dict) -> bool: return True
-        # ✅ فحص ضد الذاكرة العرضية
+    async def _check_memory_consistency(self, user_id: str, reply: str, context: Dict) -> bool:
         try:
             from app.memory.episodic.episodic_memory import episodic_memory
             stories = await episodic_memory.get_all_stories(user_id, "ar")
@@ -85,12 +94,26 @@ class ResponseValidator:
                     if any(kw in reply for kw in ["تحسن", "تراجع", "improving", "declining"]):
                         if "تحسن" in story and "تراجع" in reply: return False
                         if "improving" in story and "declining" in reply: return False
-        except: pass
-    def _check_tool_hallucination(self, reply: str, tool_results: List) -> bool: return False
-    def _check_overconfidence(self, reply: str) -> bool: return False
-    def _check_repetition(self, text: str) -> float: return 0.0
-    async def _check_emotional_fit(self, user_id: str, reply: str, emotion: Dict) -> bool: return True
-    def _contains_toxic_content(self, text: str) -> bool: return False
+        except Exception:
+            pass
+        return True
+
+    def _check_tool_hallucination(self, reply: str, tool_results: List) -> bool:
+        return False
+
+    def _check_overconfidence(self, reply: str) -> bool:
+        overconfident_phrases = ["بكل تأكيد", "أنا متأكد 100%", "هذا صحيح دائمًا"]
+        return any(phrase in reply for phrase in overconfident_phrases)
+
+    def _check_repetition(self, text: str) -> float:
+        words = text.split()
+        if len(words) < 10: return 0.0
+        unique = len(set(words))
+        return 1.0 - (unique / len(words))
+
+    async def _check_emotional_fit(self, user_id: str, reply: str, emotion: Dict) -> bool:
+        return True
+
 
 response_validator = ResponseValidator()
-logger.info("✅ Response Validator v4.0 with Prompt Injection Shield")
+logger.info("✅ Response Validator v5.0 with Prompt Injection Shield")
