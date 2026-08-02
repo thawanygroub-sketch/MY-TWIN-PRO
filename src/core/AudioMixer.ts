@@ -2,7 +2,7 @@ import { audioEngine } from './AudioEngine';
 import { stateBus } from './StateBus';
 
 const EMOTION_AUDIO_MAP: Record<string, string[]> = {
-  joy: ['celebration', 'success_soft'],
+  joy: ['success_soft', 'celebration'],
   sadness: ['silence_room', 'breathing_loop'],
   calm: ['silence_room', 'breathing_loop'],
   love: ['heartbeat_energy', 'bond_pulse'],
@@ -12,33 +12,24 @@ const EMOTION_AUDIO_MAP: Record<string, string[]> = {
 };
 
 const BEHAVIOR_AUDIO: Record<string, string> = {
-  comfort: 'trust_up',
-  explain: 'thinking_start',
-  joke: 'success_soft',
-  celebrate: 'milestone',
-  protect: 'bond_pulse',
-  guide: 'workspace_enter',
   startup: 'startup_birth',
   first_breath: 'first_breath',
-  awakening: 'awakening_glow',
   heartbeat: 'heartbeat_energy',
   eyes_open: 'eyes_open',
-};
-
-const MICRO_AUDIO: Record<string, string> = {
-  gaze_shift: 'camera_look',
-  breath_variation: 'first_breath',
-  tiny_pulse: 'heartbeat_energy',
-  membrane_shiver: 'memory_whisper',
-  particle_burst: 'particles',
-  core_tilt: 'head_nod',
-  warmth_flicker: 'bond_pulse',
+  awakening: 'awakening_glow',
+  celebrate: 'milestone',
+  comfort: 'trust_up',
+  thinking_start: 'thinking_start',
+  memory_found: 'memory_found',
+  bond_pulse: 'bond_pulse',
+  workspace_enter: 'workspace_enter',
+  head_nod: 'head_nod',
+  head_shake: 'head_shake',
 };
 
 export class AudioMixer {
   private currentContext: string = 'conversation';
   private activeLayers: Set<string> = new Set();
-  private lastMicroAudio: number = 0;
 
   constructor() {
     this.initBaseLayers();
@@ -47,27 +38,15 @@ export class AudioMixer {
 
   private async initBaseLayers(): Promise<void> {
     await audioEngine.init();
-    audioEngine.startAmbience();
+    audioEngine.startAmbience().catch(() => {});
   }
 
   private listenToPresence(): void {
     stateBus.on('presence:state_updated', (_: string, data: any) => {
       if (!data) return;
-
       if (data.emotion && data.emotionIntensity > 0.3) {
         this.setEmotionAudio(data.emotion);
       }
-
-      const now = Date.now();
-      if (data.microExpressions && data.microExpressions.length > 0 && now - this.lastMicroAudio > 5000) {
-        const latest = data.microExpressions[data.microExpressions.length - 1];
-        const audioId = MICRO_AUDIO[latest.type];
-        if (audioId) {
-          this.lastMicroAudio = now;
-          audioEngine.play(audioId).catch(() => {});
-        }
-      }
-
       if (data.silenceLevel > 0.5) {
         this.activeLayers.forEach(id => audioEngine.stop(id).catch(() => {}));
         this.activeLayers.clear();
@@ -78,8 +57,10 @@ export class AudioMixer {
   setContext(context: string): void { this.currentContext = context; }
 
   playEffect(effect: string): void {
-    const id = BEHAVIOR_AUDIO[effect] || effect;
-    if (id) audioEngine.play(id).catch(() => {});
+    try {
+      const id = BEHAVIOR_AUDIO[effect] || effect;
+      if (id) audioEngine.play(id).catch(() => {});
+    } catch (e) {}
   }
 
   setEmotionAudio(emotion: string): void {
@@ -95,11 +76,8 @@ export class AudioMixer {
   playBreath(): void { audioEngine.play('first_breath').catch(() => {}); }
   playHeartbeat(): void { audioEngine.play('heartbeat_energy').catch(() => {}); }
   playMemoryEcho(): void { audioEngine.play('memory_found').catch(() => {}); }
-  playThinking(): void { audioEngine.play('thinking_start').catch(() => {}); }
   playTyping(): void { audioEngine.play('typing').catch(() => {}); }
-  playSilence(): void { this.activeLayers.forEach(id => audioEngine.stop(id).catch(() => {})); this.activeLayers.clear(); }
-
-  getCurrentContext(): string { return this.currentContext; }
+  playThinking(): void { audioEngine.play('thinking_start').catch(() => {}); }
 }
 
 export const audioMixer = new AudioMixer();

@@ -38,7 +38,7 @@ export default function TwinPresenceZone({
       <TrustPulse size={14}/>
       <MemoryEcho visible={memoryEchoVisible} color={echoColor}/>
       <View style={styles.avatarWrap}>
-        <LivingLightEntity isListening={true} />
+        <LivingLightEntity isListening={true} / onLongPress={() => {}} onPress={() => {}} isThinking={false} isSpeaking={false}>
       </View>
     </TouchableOpacity>
   );

@@ -6,6 +6,7 @@ import { memoryContextEngine } from '../../engine/memory/MemoryContextEngine';
 import { relationshipContextEngine } from '../../engine/relationship/RelationshipContextEngine';
 import { presenceEngine } from '../../engine/presence/PresenceEngine';
 import { worldAwarenessEngine } from '../../engine/consciousness/WorldAwarenessEngine';
+import { voiceEngine } from '../../engine/voice/VoiceEngine';
 import { lifeStateEngine } from '../../engine/life/LifeStateEngine';
 import { devicePresenceEngine } from '../../engine/device/DevicePresenceEngine';
 import { unifiedPerceptionEngine } from '../../engine/perception/UnifiedPerceptionEngine';
@@ -124,6 +125,7 @@ export function useTwinBrain(initialUserId: string = '', initialLang: string = '
         ];
 
         EventBus.emit('AI_FINISH_THINKING', { response: response.reply, confidence: 0.9 });
+        try { voiceEngine.speak(response.reply, response.emotion); } catch (e) {}
         if (response.memory_surfaced) EventBus.emit('MEMORY_CREATED', { memoryId: response.memory_surfaced.id, layer: 'context' });
 
         return { reply: response.reply, provider: 'unified_brain', emotion: response.twin_emotional_state?.current_emotion || 'neutral', thinkingPhases: phases, memoryStored: !!response.memory_surfaced, relationshipDelta: response.twin_state_update?.bond_delta || 0 };

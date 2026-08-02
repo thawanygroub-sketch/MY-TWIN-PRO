@@ -45,7 +45,6 @@ export default function LivingWorld() {
     setMessages(prev => [...prev, { id: twinMsgId, sender: 'twin', text: '' }]);
     
     // إعلام المحركات بالتفاعل
-    audioMixer.playTyping();
     
     await streamMessage(text);
   }, [inputText, isThinking, streamMessage]);
