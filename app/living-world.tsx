@@ -12,7 +12,7 @@ import { presenceEngine } from '../engine/presence/PresenceEngine';
 import { audioMixer } from '../src/core/AudioMixer';
 import { voiceEngine } from '../engine/voice/VoiceEngine';
 import AmbientField from '../src/world/AmbientField';
-import LivingLightEntity from '../src/renderers/zones/LivingLightEntity';
+import { ConsciousBeing } from '../src/components/conscious/ConsciousBeing';
 import { SPACE, RADIUS } from '../src/design/tokens/spacing';
 import { Send, Mic, MicOff } from 'lucide-react-native';
 
@@ -73,7 +73,7 @@ export default function LivingWorld() {
     >
       <AmbientField />
       <View style={styles.entityWrapper}>
-        <LivingLightEntity
+        <ConsciousBeing
           isThinking={isThinking}
           isSpeaking={streamedText.length > 0}
           isListening={isListening}

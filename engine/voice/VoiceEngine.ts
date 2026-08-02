@@ -99,7 +99,7 @@ export class VoiceEngine {
       });
 
       this.recording = new Audio.Recording();
-      await this.recording.prepareToRecordAsync(({}));
+        await this.recording.prepareToRecordAsync({ android: { extension: ".m4a", outputFormat: 2, audioEncoder: 3, sampleRate: 44100, numberOfChannels: 2, bitRate: 128000 }, ios: { extension: ".m4a", audioQuality: 0, sampleRate: 44100, numberOfChannels: 2, bitRate: 128000 }, web: { mimeType: "audio/webm", bitsPerSecond: 128000 } } as any);
       await this.recording.startAsync();
 
       // تحديث حالة الكيان ليعكس أنه يستمع

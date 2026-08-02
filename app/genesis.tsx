@@ -396,7 +396,7 @@ export default function Genesis() {
             <Rect x={0} y={0} width={width} height={height * 0.8} color="#000005" />
             
             {/* Presence Aura */}
-            <Circle cx={CX} cy={CY} r={80 + baseRadius} opacity={entityOpacity.value * 0.4}>
+            <Circle cx={CX} cy={CY} r={80 + baseRadius.value} opacity={entityOpacity.value * 0.4}>
               <Paint><BlurMask blur={40} style="normal" /></Paint>
               <RadialGradient c={vec(CX, CY)} r={80} colors={['#A855F715', 'transparent']} />
             </Circle>
@@ -416,7 +416,7 @@ export default function Genesis() {
                   <Paint><BlurMask blur={3} style="solid" /></Paint>
                 </Path>
                 {/* Pupil */}
-                <Circle cx={CX + eyeGazeX} cy={CY - 8 + eyeGazeY} r={4 * (1 + eyeFocus.value * 0.5)} color="#0A0020" opacity={eyeOpacity} />
+                <Circle cx={CX + eyeGazeX.value} cy={CY - 8 + eyeGazeY.value} r={4 * (1 + eyeFocus.value * 0.5)} color="#0A0020" opacity={eyeOpacity} />
                 {/* Eye Glow */}
                 <Circle cx={CX} cy={CY - 8} r={40} opacity={eyeOpacity.value * 0.15}>
                   <Paint><BlurMask blur={20} style="normal" /></Paint>

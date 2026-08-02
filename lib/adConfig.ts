@@ -9,7 +9,7 @@ const envAdUnits = {
 };
 
 // معرفات الإعلانات الحقيقية (استبدل عند النشر)
-const PRODUCTION_AD_UNITS = {
+const PRODUCTION_AD_UNITS: Record<string, string> = {
   rewarded: Platform.select({
     ios: envAdUnits.ios || 'ca-app-pub-xxxxxxxxxxxxxxxx/xxxxxxxxxx',
     android: envAdUnits.android || 'ca-app-pub-xxxxxxxxxxxxxxxx/xxxxxxxxxx',

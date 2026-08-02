@@ -1,14 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
-import { usePresence } from '../hooks/usePresence';
-import { useBreathAnimation } from '../hooks/useBreathAnimation';
-import { useEmotionalState } from '../hooks/useEmotionalState';
-import { useBondLevel } from '../hooks/useBondLevel';
-import RelationshipAura from '../renderers/zones/RelationshipAura';
-import TrustPulse from '../renderers/zones/TrustPulse';
-import DigitalSoulPulse from '../renderers/zones/DigitalSoulPulse';
-import MemoryEcho from '../renderers/zones/MemoryEcho';
-import LivingLightEntity from '../renderers/zones/LivingLightEntity';
+import { ConsciousBeing } from '../components/conscious/ConsciousBeing';
 import { SPACE } from '../../src/design/tokens/spacing';
 
 interface TwinPresenceZoneProps {
@@ -21,11 +13,6 @@ interface TwinPresenceZoneProps {
 export default function TwinPresenceZone({
   memoryEchoVisible, echoColor, awakeningEyesOpen, onLongPress,
 }: TwinPresenceZoneProps) {
-  const presence = usePresence();
-  const breath = useBreathAnimation();
-  const emotion = useEmotionalState();
-  const bond = useBondLevel();
-
   return (
     <TouchableOpacity
       style={styles.container}
@@ -33,12 +20,11 @@ export default function TwinPresenceZone({
       disabled={!onLongPress}
       activeOpacity={1}
     >
-      <DigitalSoulPulse/>
-      <RelationshipAura size={240}/>
-      <TrustPulse size={14}/>
-      <MemoryEcho visible={memoryEchoVisible} color={echoColor}/>
       <View style={styles.avatarWrap}>
-        <LivingLightEntity isListening={true} / onLongPress={() => {}} onPress={() => {}} isThinking={false} isSpeaking={false}>
+        <ConsciousBeing
+          emotionalState={awakeningEyesOpen ? 'excited' : 'thinking'}
+          onLongPress={onLongPress}
+        />
       </View>
     </TouchableOpacity>
   );
