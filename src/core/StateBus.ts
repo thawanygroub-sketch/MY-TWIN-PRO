@@ -23,6 +23,7 @@ export interface Message {
 }
 
 export interface TwinState {
+  consciousness?: { energy: number; curiosity: number; fear: number; joy: number; attention: number; memoryEcho: number; cognitiveLoad: number; salience: number; selfAwareness: number; experienceIntensity: number; };
   presenceLevel: number;
   interfaceState: InterfaceState; isAwakening: boolean; awakeningPhase: string;
   breath: BreathState; avatar: AvatarState; emotion: EmotionalState; spaceEnergy: SpaceEnergy; silenceLevel: number;
@@ -50,6 +51,7 @@ const DEFAULT_STATE: TwinState = {
   workspace: { active: null, previous: null, isTransforming: false, transformProgress: 0, spatialMemory: {} },
   relationship: { bondLevel: 0, attachmentStyle: 'unknown', trustScore: 0.5, firstContactTimestamp: null },
   isOnline: true, isDegraded: false, uptime: 0,
+  consciousness: { energy: 0.5, curiosity: 0.5, fear: 0, joy: 0, attention: 0.5, memoryEcho: 0, cognitiveLoad: 0.3, salience: 0.3, selfAwareness: 0.3, experienceIntensity: 0 },
   personalityDNA: { empathy: 0.85, curiosity: 0.8, humor: 0.5, initiative: 0.6, reflection: 0.9, logic: 0.75, creativity: 0.8, calmness: 0.85 },
 };
 

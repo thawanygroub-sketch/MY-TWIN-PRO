@@ -21,10 +21,7 @@ export default function TwinPresenceZone({
       activeOpacity={1}
     >
       <View style={styles.avatarWrap}>
-        <ConsciousBeing
-          emotionalState={awakeningEyesOpen ? 'excited' : 'thinking'}
-          onLongPress={onLongPress}
-        />
+        <ConsciousBeing onLongPress={onLongPress} />
       </View>
     </TouchableOpacity>
   );
