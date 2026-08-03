@@ -111,13 +111,7 @@ export default function LivingLightEntity({ isThinking, isSpeaking, isListening,
     return generateEyePath(CX + 22, CY - 8, 18 + eyeScale.value * 3, Math.max(1, 10 + eyeScale.value * 2), eyeGazeX.value, eyeGazeY.value);
   });
 
-  const containerStyle = useAnimatedStyle(() => ({
-    transform: [
-      { rotate: `${headTilt.value}deg` },
-      { scale: batteryLow.value ? 0.85 : 1.0 }
-    ],
-    opacity: batteryLow.value ? 0.5 : 0.9
-  }));
+  
 
   return (
     <Pressable

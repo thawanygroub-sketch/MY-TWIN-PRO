@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { DigitalBeing } from './DigitalBeing';
 
 type EmotionalState = 
@@ -11,6 +11,7 @@ interface ConsciousBeingProps {
   emotionalState?: EmotionalState;
   isListening?: boolean;
   isThinking?: boolean;
+  isSpeaking?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
 }
@@ -20,21 +21,23 @@ export const ConsciousBeing: React.FC<ConsciousBeingProps> = ({
   emotionalState = 'neutral',
   isListening = false,
   isThinking = false,
+  isSpeaking = false,
   onPress,
   onLongPress,
 }) => {
-  const derivedState: EmotionalState = isThinking ? 'thinking' : isListening ? 'neutral' : emotionalState;
-  const auraIntensity = isThinking ? 9 : isListening ? 5 : 7;
+  const derivedState: EmotionalState = isThinking ? 'thinking' : isSpeaking ? 'excited' : isListening ? 'neutral' : emotionalState;
+  const auraIntensity = isThinking ? 9 : isSpeaking ? 8 : isListening ? 5 : 7;
 
   return (
-    <View style={styles.container}>
-      <DigitalBeing
-        size={size}
-        emotionalState={derivedState}
-        auraIntensity={auraIntensity}
-        waveCount={6}
-      />
-    </View>
+    <Pressable onPress={onPress} onLongPress={onLongPress}>
+      <View style={styles.container}>
+        <DigitalBeing
+          size={size}
+          emotionalState={derivedState}
+          auraIntensity={auraIntensity}
+        />
+      </View>
+    </Pressable>
   );
 };
 

@@ -3,7 +3,6 @@ import { View, StyleSheet, Dimensions } from 'react-native';
 import { Canvas, Circle, Group, BlurMask, Path } from '@shopify/react-native-skia';
 import {
   useSharedValue,
-  useDerivedValue,
   withRepeat,
   withTiming,
   withSequence,
@@ -30,9 +29,8 @@ export const DigitalBeing: React.FC<DigitalBeingProps> = ({
   size = ENTITY_SIZE,
   emotionalState = 'neutral',
   auraIntensity = 7,
-  waveCount = 6,
 }) => {
-  const pulse = useSharedValue(1);
+  const pulseValue = useSharedValue(1);
   const waveProgress = useSharedValue(0);
   const eyeBlink = useSharedValue(1);
   const pupilX = useSharedValue(0);
@@ -51,7 +49,7 @@ export const DigitalBeing: React.FC<DigitalBeingProps> = ({
   };
 
   useEffect(() => {
-    pulse.value = withRepeat(
+    pulseValue.value = withRepeat(
       withSequence(
         withTiming(1 + (auraIntensity * 0.05), { duration: 2000, easing: Easing.inOut(Easing.ease) }),
         withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) })
@@ -88,14 +86,10 @@ export const DigitalBeing: React.FC<DigitalBeingProps> = ({
     return () => clearInterval(moveInterval);
   }, []);
 
-  const auraSize = useDerivedValue(() => size * 0.65 * pulse.value);
-  const wave1Radius = useDerivedValue(() => size * 0.4 + (size * 0.35 * waveProgress.value));
-  const wave1Opacity = useDerivedValue(() => 0.5 * (1 - waveProgress.value));
-  const wave2Radius = useDerivedValue(() => size * 0.4 + (size * 0.35 * Math.max(0, waveProgress.value - 0.33)));
-  const wave2Opacity = useDerivedValue(() => 0.4 * Math.max(0, 1 - (waveProgress.value - 0.33) * 1.5));
-  const wave3Radius = useDerivedValue(() => size * 0.4 + (size * 0.35 * Math.max(0, waveProgress.value - 0.66)));
-  const wave3Opacity = useDerivedValue(() => 0.3 * Math.max(0, 1 - (waveProgress.value - 0.66) * 3));
-  const eyeScale = useDerivedValue(() => eyeBlink.value);
+  const auraSize = size * 0.65;
+  const wave1Radius = size * 0.55;
+  const wave2Radius = size * 0.50;
+  const wave3Radius = size * 0.45;
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
@@ -114,23 +108,23 @@ export const DigitalBeing: React.FC<DigitalBeingProps> = ({
         </Group>
 
         {/* الموجات */}
-        <Circle cx={CX} cy={CY} r={wave1Radius} color={auraColors[emotionalState][0]} opacity={wave1Opacity} style="stroke" strokeWidth={8} />
-        <Circle cx={CX} cy={CY} r={wave2Radius} color={auraColors[emotionalState][1]} opacity={wave2Opacity} style="stroke" strokeWidth={6} />
-        <Circle cx={CX} cy={CY} r={wave3Radius} color={auraColors[emotionalState][2]} opacity={wave3Opacity} style="stroke" strokeWidth={4} />
+        <Circle cx={CX} cy={CY} r={wave1Radius} color={auraColors[emotionalState][0]} opacity={0.3} style="stroke" strokeWidth={10} />
+        <Circle cx={CX} cy={CY} r={wave2Radius} color={auraColors[emotionalState][1]} opacity={0.25} style="stroke" strokeWidth={8} />
+        <Circle cx={CX} cy={CY} r={wave3Radius} color={auraColors[emotionalState][2]} opacity={0.2} style="stroke" strokeWidth={5} />
 
         {/* النواة المركزية */}
         <Circle cx={CX} cy={CY} r={size * 0.18} color="#1a1a2e" />
 
         {/* العين اليسرى */}
-        <Group transform={[{ scale: eyeScale }]}>
+        <Group>
           <Circle cx={size * 0.38} cy={size * 0.48} r={size * 0.08} color="#ffffff" />
-          <Circle cx={size * 0.38 + pupilX.value} cy={size * 0.48 + pupilY.value} r={size * 0.04} color="#000000" />
+          <Circle cx={size * 0.38 + pupilX.value * 0.1} cy={size * 0.48 + pupilY.value * 0.1} r={size * 0.04} color="#000000" />
         </Group>
 
         {/* العين اليمنى */}
-        <Group transform={[{ scale: eyeScale }]}>
+        <Group>
           <Circle cx={size * 0.62} cy={size * 0.48} r={size * 0.08} color="#ffffff" />
-          <Circle cx={size * 0.62 + pupilX.value} cy={size * 0.48 + pupilY.value} r={size * 0.04} color="#000000" />
+          <Circle cx={size * 0.62 + pupilX.value * 0.1} cy={size * 0.48 + pupilY.value * 0.1} r={size * 0.04} color="#000000" />
         </Group>
 
         {/* X للرفض */}
