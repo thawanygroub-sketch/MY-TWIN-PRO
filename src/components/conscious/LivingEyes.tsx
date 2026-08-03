@@ -7,7 +7,7 @@ type EyeExpression =
 
 interface LivingEyesProps {
   size: number;
-  expression: EyeExpression;
+  expression: string;
   eyeOpenness: number;
   pupilSize: number;
   gazeX: number;

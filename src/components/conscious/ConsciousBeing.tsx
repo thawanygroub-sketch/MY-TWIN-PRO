@@ -46,11 +46,11 @@ export const ConsciousBeing: React.FC<ConsciousBeingProps> = ({
   useEffect(() => {
     const interval = setInterval(() => {
       const intent = presenceMind.evaluate();
+      // const target = presenceEngine.translate(intent);
       const target = presenceEngine.translate(intent);
       const enhanced = microBehaviorEngine.enhance(target, 1000);
       presenceMemory.remember(enhanced);
 
-      // Animate
       const a = animValues;
       a.eyeOpenness.value = withTiming(enhanced.eyeOpenness, { duration: 800, easing: Easing.inOut(Easing.ease) });
       a.pupilSize.value = withTiming(enhanced.pupilSize, { duration: 800 });
@@ -67,7 +67,6 @@ export const ConsciousBeing: React.FC<ConsciousBeingProps> = ({
       a.eyeExpression.value = enhanced.eyeExpression as any;
       a.headTilt.value = withTiming(enhanced.headTilt, { duration: 600 });
 
-      // Update visual state (triggers re-render)
       setVisualState({
         eyeOpenness: a.eyeOpenness.value,
         pupilSize: a.pupilSize.value,
@@ -107,7 +106,7 @@ export const ConsciousBeing: React.FC<ConsciousBeingProps> = ({
           auraFlicker={visualState.auraFlicker}
           gazeX={visualState.gazeX}
           gazeY={visualState.gazeY}
-          eyeExpression={visualState.eyeExpression}
+          eyeExpression={visualState.eyeExpression as any}
           headTilt={visualState.headTilt}
           trailState={visualState.trailState}
         />

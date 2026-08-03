@@ -294,27 +294,25 @@ export class AudioEngine {
   }
 
   async fadeAll(): Promise<void> {
-    for (const [, playing] of this.layers) {
-      try { await playing.sound.stopAsync(); await playing.sound.unloadAsync(); } catch (e) {}
-    }
+    this.layers.forEach((playing) => { try { playing.sound.stopAsync(); playing.sound.unloadAsync(); } catch (e) {}
+    });
     this.layers.clear();
-    for (const [, playing] of this.oneShots) {
-      try { await playing.sound.stopAsync(); await playing.sound.unloadAsync(); } catch (e) {}
-    }
+    this.oneShots.forEach((playing) => { try { playing.sound.stopAsync(); playing.sound.unloadAsync(); } catch (e) {}
+    });
     this.oneShots.clear();
     this.activeEmotionalSound = null;
   }
 
   mute(): void {
     this.isMuted = true;
-    for (const [, playing] of this.layers) playing.sound.setVolumeAsync(0);
-    for (const [, playing] of this.oneShots) playing.sound.setVolumeAsync(0);
+    this.layers.forEach((playing: PlayingSound) => { playing.sound.setVolumeAsync(0).catch(() => {}); });
+    this.oneShots.forEach((playing: PlayingSound) => { playing.sound.setVolumeAsync(0).catch(() => {}); });
   }
 
   unmute(): void {
     this.isMuted = false;
-    for (const [, playing] of this.layers) playing.sound.setVolumeAsync(playing.config.volume);
-    for (const [, playing] of this.oneShots) playing.sound.setVolumeAsync(playing.config.volume);
+    this.layers.forEach((playing: PlayingSound) => { playing.sound.setVolumeAsync(playing.config.volume).catch(() => {}); });
+    this.oneShots.forEach((playing: PlayingSound) => { playing.sound.setVolumeAsync(playing.config.volume).catch(() => {}); });
   }
 
   getIsMuted(): boolean { return this.isMuted; }

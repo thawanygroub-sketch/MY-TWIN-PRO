@@ -74,9 +74,7 @@ export default function LivingWorld() {
       <AmbientField />
       <View style={styles.entityWrapper}>
         <ConsciousBeing
-          isThinking={isThinking}
-          isSpeaking={streamedText.length > 0}
-          isListening={isListening}
+          
         />
       </View>
 

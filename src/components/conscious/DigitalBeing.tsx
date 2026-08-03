@@ -22,7 +22,7 @@ interface DigitalBeingProps {
   auraFlicker: number;
   gazeX: number;
   gazeY: number;
-  eyeExpression: string;
+  eyeExpression: any;
   headTilt: number;
   trailState: any;
 }
