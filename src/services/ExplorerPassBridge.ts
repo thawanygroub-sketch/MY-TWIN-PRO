@@ -1,41 +1,35 @@
-import { economyEngine } from './EconomyEngine';
+/** ExplorerPassBridge v2 — ساعة القدرات تُمنح من الخادم فقط. */
 import { EventBus } from '../core/EventBus';
+import { economyEngine } from './EconomyEngine';
 
 export class ExplorerPassBridge {
   private passActive = false;
-  private passExpiry: number = 0;
+  private passExpiry = 0;
+  private capability = 'general';
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  async activatePass(userId: string): Promise<void> {
+  async activateViaAd(capability: string): Promise<boolean> {
+    const res = await economyEngine.claimCapabilityAd(capability);
+    if (!res.success || !res.expiresAt) return false;
+    this.capability = capability;
     this.passActive = true;
-    this.passExpiry = Date.now() + 60 * 60 * 1000;
-
-    await economyEngine.addPoints('ad', 10, 'مشاهدة إعلان');
-
-    EventBus.emit('EXPLORER_PASS_ACTIVATED', { expiry: this.passExpiry });
-
+    this.passExpiry = new Date(res.expiresAt).getTime();
+    EventBus.emit('EXPLORER_PASS_ACTIVATED', { expiry: this.passExpiry, capability });
     if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.deactivatePass(), 60 * 60 * 1000);
+    this.timer = setTimeout(() => this.deactivate(), Math.max(0, this.passExpiry - Date.now()));
+    return true;
   }
-
-  deactivatePass(): void {
-    this.passActive = false;
-    this.passExpiry = 0;
-    EventBus.emit('EXPLORER_PASS_EXPIRED', {});
+  deactivate(): void {
+    this.passActive = false; this.passExpiry = 0;
+    EventBus.emit('EXPLORER_PASS_EXPIRED', { capability: this.capability });
   }
-
-  isPassActive(): boolean {
-    if (this.passActive && Date.now() > this.passExpiry) {
-      this.deactivatePass();
-      return false;
-    }
-    return this.passActive;
+  isPassActive(capability?: string): boolean {
+    if (this.passActive && Date.now() > this.passExpiry) { this.deactivate(); return false; }
+    if (!this.passActive) return false;
+    return capability ? capability === this.capability || this.capability === 'general' : true;
   }
-
   getRemainingMinutes(): number {
-    if (!this.passActive) return 0;
-    return Math.max(0, Math.ceil((this.passExpiry - Date.now()) / 60000));
+    return this.isPassActive() ? Math.max(0, Math.ceil((this.passExpiry - Date.now())/60000)) : 0;
   }
 }
-
 export const explorerPassBridge = new ExplorerPassBridge();

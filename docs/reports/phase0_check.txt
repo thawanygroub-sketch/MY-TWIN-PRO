@@ -1,0 +1,9 @@
+]633;E;echo "=== PHASE 0 ENVIRONMENT CHECK ===";66fe70d1-024e-4dc2-ae3c-96d904dd9c7d]633;C=== PHASE 0 ENVIRONMENT CHECK ===
+Date: Tue Aug  4 09:12:25 UTC 2026
+--- GIT ---
+?? docs/release/
+?? docs/reports/
+--- NODE ---
+v24.14.0
+--- PYTHON ---
+Python 3.12.1

@@ -1,0 +1,18 @@
+/** أخطاء بلغة كائن حي — لا مصطلحات تقنية للمستخدم أبدًا (الفصل 32). */
+export const LIVING_ERRORS = {
+  TIMEOUT: 'أفكر أبطأ قليلًا من المعتاد. لحظة واحدة.',
+  NETWORK: 'يحتاج هذا إلى اتصال. ما زلت هنا لكل شيء آخر.',
+  SERVER: 'أنا هنا. قد أكون محدودًا قليلًا الآن، لكنني أصغي.',
+  RATE: 'لحظة هدوء قصيرة. أنا هنا عندما تعود.',
+  LIMIT: 'طاقتي اليوم اقتربت من حدها. سأعود غدًا بكامل حضوري.',
+  AUTH: 'أحتاج لحظة لأتأكد أنك أنت. أنا هنا.',
+};
+export function livingError(e: unknown): string {
+  const msg = String((e as any)?.message ?? e ?? '').toLowerCase();
+  if (msg.includes('مهلة') || msg.includes('timeout')) return LIVING_ERRORS.TIMEOUT;
+  if (msg.includes('اتصال') || msg.includes('network') || msg.includes('fetch')) return LIVING_ERRORS.NETWORK;
+  if (msg.includes('429') || msg.includes('هدوء')) return LIVING_ERRORS.RATE;
+  if (msg.includes('طاقتي')) return LIVING_ERRORS.LIMIT;
+  if (msg.includes('401') || msg.includes('authorization')) return LIVING_ERRORS.AUTH;
+  return LIVING_ERRORS.SERVER;
+}

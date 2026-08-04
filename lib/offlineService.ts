@@ -1,140 +1,74 @@
+/** offlineService v2 — الحضور لا يموت offline (الفصل 31/64).
+ * لا يُرسل user_id في الأجسام أبدًا؛ الهوية عبر التوكن فقط. */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiPost } from './httpClient';
-import { useTwinCoreStore } from '../store/useTwinCoreStore';
+import { stateBus } from '../src/core/StateBus';
+import { LIVING_ERRORS } from './livingErrors';
 
 const OFFLINE_QUEUE_KEY = 'mytwin_offline_queue';
 const RESPONSE_CACHE_KEY = 'mytwin_response_cache';
-const MAX_CACHED_RESPONSES = 100;
-const MAX_RETRIES = 3;
+const MAX_CACHED = 100; const MAX_RETRIES = 3;
+interface QueuedMessage { id: string; message: string; timestamp: number; retries: number; lang?: string; }
 
-interface QueuedMessage {
-  id: string;
-  message: string;
-  timestamp: number;
-  retries: number;
-  userId?: string;
-  lang?: string;
-}
-
-// ========== Cache ==========
 export async function cacheResponse(query: string, reply: string): Promise<void> {
   try {
-    const cached = await getResponseCacheMap();
-    const key = simpleHash(query.trim().toLowerCase());
-    cached[key] = { reply, timestamp: Date.now() };
-    const entries = Object.entries(cached);
-    if (entries.length > MAX_CACHED_RESPONSES) {
-      const oldest = entries.sort((a, b) => a[1].timestamp - b[1].timestamp)[0][0];
-      delete cached[oldest];
-    }
-    await AsyncStorage.setItem(RESPONSE_CACHE_KEY, JSON.stringify(cached));
+    const map = await getMap();
+    map[hash(query)] = { reply, timestamp: Date.now() };
+    const entries = Object.entries(map);
+    if (entries.length > MAX_CACHED) delete map[entries.sort((a,b)=>a[1].timestamp-b[1].timestamp)[0][0]];
+    await AsyncStorage.setItem(RESPONSE_CACHE_KEY, JSON.stringify(map));
   } catch {}
 }
-
 export async function getCachedResponse(message: string): Promise<string | null> {
   try {
-    const cached = await getResponseCacheMap();
-    const key = simpleHash(message.trim().toLowerCase());
-    const entry = cached[key];
-    if (entry && Date.now() - entry.timestamp < 3600_000) return entry.reply; // 1 hour TTL
-    return null;
-  } catch {
-    return null;
-  }
+    const e = (await getMap())[hash(message)];
+    return e && Date.now() - e.timestamp < 3600_000 ? e.reply : null;
+  } catch { return null; }
 }
-
-async function getResponseCacheMap(): Promise<Record<string, { reply: string; timestamp: number }>> {
+/** رد offline حي: كاش أولًا، ثم لغة حضور — لا خطأ تقني. */
+export async function getOfflineReply(message: string): Promise<string> {
+  const cached = await getCachedResponse(message);
+  if (cached) return cached;
+  return LIVING_ERRORS.NETWORK;
+}
+async function getMap(): Promise<Record<string, { reply: string; timestamp: number }>> {
+  try { const raw = await AsyncStorage.getItem(RESPONSE_CACHE_KEY); return raw ? JSON.parse(raw) : {}; }
+  catch { return {}; }
+}
+function hash(s: string): string {
+  let h = 0; for (let i=0;i<s.length;i++){ h=((h<<5)-h)+s.charCodeAt(i); h|=0; }
+  return Math.abs(h).toString(36);
+}
+export async function addToOfflineQueue(message: string, lang?: string): Promise<void> {
   try {
-    const raw = await AsyncStorage.getItem(RESPONSE_CACHE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
-}
-
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const chr = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + chr;
-    hash |= 0; // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(36);
-}
-
-// ========== Offline Queue ==========
-export async function addToOfflineQueue(message: string): Promise<void> {
-  try {
-    const state = useTwinCoreStore.getState();
-    const queue = await getOfflineQueue();
-    queue.push({
-      id: `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-      message,
-      timestamp: Date.now(),
-      retries: 0,
-      userId: state.userId,
-      lang: state.lang,
-    });
-    await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    const q = await getOfflineQueue();
+    q.push({ id: `${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`, message, timestamp: Date.now(), retries: 0, lang });
+    await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(q));
   } catch {}
 }
-
 export async function getOfflineQueue(): Promise<QueuedMessage[]> {
-  try {
-    const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  try { const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY); return raw ? JSON.parse(raw) : []; }
+  catch { return []; }
 }
-
-export async function clearOfflineQueue(): Promise<void> {
-  await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify([]));
-}
-
 export async function processOfflineQueue(): Promise<number> {
-  const queue = await getOfflineQueue();
-  if (!queue.length) return 0;
-
-  let processed = 0;
-  const remaining: QueuedMessage[] = [];
-
-  for (const item of queue) {
-    try {
-      await apiPost('/api/chat', {
-        message: item.message,
-        lang: item.lang || 'ar',
-        user_id: item.userId,
-      });
-      processed++;
-    } catch {
-      if (item.retries < MAX_RETRIES) {
-        remaining.push({ ...item, retries: item.retries + 1 });
-      }
-    }
+  const q = await getOfflineQueue(); if (!q.length) return 0;
+  let done = 0; const rest: QueuedMessage[] = [];
+  for (const item of q) {
+    try { await apiPost('/api/chat', { message: item.message, lang: item.lang || 'ar' }); done++; }
+    catch { if (item.retries < MAX_RETRIES) rest.push({ ...item, retries: item.retries + 1 }); }
   }
-
-  await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
-  return processed;
+  await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(rest));
+  return done;
 }
-
-// ========== Network Status ==========
-type NetworkCallback = (online: boolean) => void;
-const listeners: NetworkCallback[] = [];
-let online = true;
-
-export function onNetworkChange(cb: NetworkCallback): () => void {
-  listeners.push(cb);
-  return () => {
-    const idx = listeners.indexOf(cb);
-    if (idx > -1) listeners.splice(idx, 1);
-  };
-}
-
+type NetCb = (online: boolean) => void;
+const listeners: NetCb[] = []; let online = true;
+export function onNetworkChange(cb: NetCb): () => void { listeners.push(cb); return () => { const i = listeners.indexOf(cb); if (i>-1) listeners.splice(i,1); }; }
 export function setNetworkStatus(connected: boolean): void {
   if (online !== connected) {
     online = connected;
+    stateBus.update({ isOnline: connected, isDegraded: !connected });
     listeners.forEach(cb => cb(connected));
     if (connected) processOfflineQueue().catch(() => {});
   }
 }
-
-export function getNetworkStatus(): boolean {
-  return online;
-}
+export function getNetworkStatus(): boolean { return online; }
