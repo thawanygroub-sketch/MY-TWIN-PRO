@@ -1,60 +1,59 @@
-/** useStreamingChat v2.1 — Envelope + صمت دستوري + أوفلاين كريم + أحداث التجربة.
- * لا سلطة محلية للطاقة/الرابطة؛ الخادم هو الحقيقة. */
 import { useState, useRef, useCallback } from 'react';
 import { apiPost } from './httpClient';
 import { stateBus } from '../src/core/StateBus';
-import { livingError } from './livingErrors';
-import { getNetworkStatus, addToOfflineQueue, getCachedResponse, cacheResponse } from './offlineService';
-import { useConversationStore } from '../store/useConversationStore';
+import { getNetworkStatus, getCachedResponse, addToOfflineQueue, cacheResponse } from './offlineService';
 import { useTwinStore } from '../store/useTwinStore';
-import { EventBus } from '../src/core/EventBus';
+import { useTwinCoreStore } from '../store/useTwinCoreStore';
+import { useConversationStore } from '../store/useConversationStore';
 
+const LIVING_ERRORS = {
+  TIMEOUT: 'أفكر أبطأ قليلًا من المعتاد. لحظة واحدة.',
+  NETWORK: 'يحتاج هذا إلى اتصال. ما زلت هنا لكل شيء آخر.',
+  SERVER: 'أنا هنا. قد أكون محدودًا قليلًا الآن، لكنني أصغي.',
+};
 export function useStreamingChat() {
   const [state, setState] = useState({ isStreaming: false, error: null as string | null });
   const abortRef = useRef<AbortController | null>(null);
-  const { addMessage, setStreamingText, setThinking, setThinkingStage } = useTwinStore();
+  const { addMessage, setStreamingText, setThinking, setThinkingStage, updateBond, setTwinEnergy } = useTwinStore();
 
   const sendStreamingMessage = useCallback(async (message: string, image?: string) => {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController(); abortRef.current = controller;
     setState({ isStreaming: true, error: null });
     setThinking(true); setThinkingStage('thinking');
-    EventBus.emit('conversation:user_message', { message });
     const userMsgId = `msg_${Date.now().toString(36)}_user`;
     addMessage({ id: userMsgId, role: 'user', content: message, timestamp: Date.now(), image });
     const twinMsgId = `msg_${Date.now().toString(36)}_twin`;
     addMessage({ id: twinMsgId, role: 'twin', content: '', timestamp: Date.now(), thinkingStage: 'thinking' });
-
     const finalize = (text: string, failed = false) => {
-      useConversationStore.setState((s: any) => ({
-        chatHistory: s.chatHistory.map((m: any) =>
-          m.id === twinMsgId ? { ...m, content: text, failed, thinkingStage: 'complete' } : m),
+      useConversationStore.setState((s) => ({
+        chatHistory: s.chatHistory.map((m: any) => m.id === twinMsgId ? { ...m, content: text, failed, thinkingStage: 'complete' } : m),
       }));
       setThinking(false); setThinkingStage('complete'); setStreamingText('');
       setState({ isStreaming: false, error: null });
-      if (!failed) EventBus.emit('chat:twin_finalized', { text });
     };
-
     if (!getNetworkStatus()) {
       const cached = await getCachedResponse(message);
-      const text = cached || 'يحتاج هذا إلى اتصال. ما زلت هنا لكل شيء آخر.';
+      const text = cached || LIVING_ERRORS.NETWORK;
       await addToOfflineQueue(message);
-      finalize(text);
+      finalize(text, !cached);
       return text;
     }
-
     let acc = ''; setStreamingText(''); setThinkingStage('generating');
     try {
-      const cs = useConversationStore.getState();
-      const res = await apiPost('/api/chat', {
+      const coreState = useTwinCoreStore.getState();
+      const conversationState = useConversationStore.getState();
+      const response = await apiPost('/api/chat', {
         message,
-        history: (cs.chatHistory || []).slice(-10).map((h: any) => ({ role: h.role, content: h.content })),
-        lang: 'ar',
+        history: conversationState.chatHistory.slice(-10).map((h: any) => ({ role: h.role, content: h.content })),
+        lang: coreState.lang,
       });
-      const full = res?.reply || '';
-      const silence = Number(res?.silence_ms || 0);
+      const full = response?.reply || '';
+      const silence = Number(response?.silence_ms || 0);
       if (silence > 0) await new Promise(r => setTimeout(r, Math.min(silence, 3500)));
-      stateBus.updateFromUnifiedResponse(res);
+      stateBus.updateFromUnifiedResponse(response);
+      if (typeof response?.bond_level === 'number') updateBond(response.bond_level);
+      if (typeof response?.energy === 'number') setTwinEnergy(Math.round(response.energy * 100));
       for (let i = 0; i < full.length; i += 3) {
         acc = full.substring(0, i + 3);
         setStreamingText(acc);
@@ -63,13 +62,17 @@ export function useStreamingChat() {
       await cacheResponse(message, full);
       finalize(full);
       return full;
-    } catch (e: any) {
-      if (e?.name === 'AbortError') { setState({ isStreaming: false, error: null }); return ''; }
+    } catch (error: any) {
+      if (error?.name === 'AbortError') { setState({ isStreaming: false, error: null }); return ''; }
+      const msg = String(error?.message || '');
+      const living = msg.includes('مهلة') || msg.includes('TIMEOUT') ? LIVING_ERRORS.TIMEOUT
+        : msg.includes('اتصال') || msg.includes('Network') || msg.includes('network') ? LIVING_ERRORS.NETWORK
+        : LIVING_ERRORS.SERVER;
       await addToOfflineQueue(message);
-      finalize(livingError(e), true);
+      finalize(living, true);
       return '';
     }
-  }, [addMessage, setStreamingText, setThinking, setThinkingStage]);
+  }, [addMessage, setStreamingText, setThinking, setThinkingStage, updateBond, setTwinEnergy]);
 
   const cancelStream = useCallback(() => {
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }

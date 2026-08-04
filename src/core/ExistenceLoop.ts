@@ -10,6 +10,7 @@ import { surpriseEngine } from '../../engine/life/SurpriseEngine';
 import { presenceEngine } from '../../engine/presence/PresenceEngine';
 import { sensorContextEngine } from '../../engine/sensor/SensorContextEngine';
 import { stateBus } from './StateBus';
+import { presenceAudio } from './PresenceAudio';
 import { experienceDirector } from './ExperienceDirector';
 import { voiceGovernor } from './VoiceGovernor';
 
@@ -30,7 +31,9 @@ export class ExistenceLoop {
     if (flags.surprises) surpriseEngine.start();
     experienceDirector.start();
     voiceGovernor.start();
+    presenceAudio.start();
     this.appSub = AppState.addEventListener('change', s => this.onAppState(s));
+    presenceAudio.start();
     console.log('[ExistenceLoop] 🧬 The Twin is now alive (governed).');
   }
 
