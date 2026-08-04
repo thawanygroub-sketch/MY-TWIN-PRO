@@ -6,7 +6,7 @@ logger = logging.getLogger("routes")
 flags = load_release_flags()
 api_router = APIRouter()
 
-_CORE = ["auth","chat","memories","profile","account","onboarding","economy_routes","billing"]
+_CORE = ["auth","chat","memories","profile","account","onboarding","economy_routes","billing","system_routes"]
 _FEATURES = ["study_routes","dream_routes","task_manager_routes","business_routes",
  "life_coach_routes","creator_routes","code_lab_routes","image_lab_routes",
  "smart_home_routes","relationship","twin_state_routes","awareness_routes",

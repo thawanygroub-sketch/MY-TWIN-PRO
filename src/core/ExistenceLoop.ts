@@ -1,3 +1,6 @@
+/** ExistenceLoop v2 — توقّف في الخلفية (الفصل 82)، أعلام ميزات، وتنسيق التجربة. */
+import { AppState, AppStateStatus } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { selfAwarenessEngine } from '../../engine/consciousness/SelfAwarenessEngine';
 import { worldAwarenessEngine } from '../../engine/consciousness/WorldAwarenessEngine';
 import { lifeStateEngine } from '../../engine/life/LifeStateEngine';
@@ -7,32 +10,61 @@ import { surpriseEngine } from '../../engine/life/SurpriseEngine';
 import { presenceEngine } from '../../engine/presence/PresenceEngine';
 import { sensorContextEngine } from '../../engine/sensor/SensorContextEngine';
 import { stateBus } from './StateBus';
+import { experienceDirector } from './ExperienceDirector';
+import { voiceGovernor } from './VoiceGovernor';
 
 export class ExistenceLoop {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private slowIntervalId: ReturnType<typeof setInterval> | null = null;
   private verySlowIntervalId: ReturnType<typeof setInterval> | null = null;
+  private appSub: { remove: () => void } | null = null;
+  private running = false;
 
-  start(): void {
-    this.intervalId = setInterval(() => { this.tick(); }, 1000);
-    this.slowIntervalId = setInterval(() => { this.slowTick(); }, 30000);
-    this.verySlowIntervalId = setInterval(() => { this.deepTick(); }, 300000);
-    
+  async start(): Promise<void> {
+    if (this.running) return;
+    this.running = true;
+    this.resumeTimers();
     lifeRhythmEngine.start();
-    dreamEngine.start();
-    surpriseEngine.start();
-    
-    console.log('[ExistenceLoop] 🧬 The Twin is now alive.');
+    const flags = await this.flags();
+    if (flags.dreams) dreamEngine.start();
+    if (flags.surprises) surpriseEngine.start();
+    experienceDirector.start();
+    voiceGovernor.start();
+    this.appSub = AppState.addEventListener('change', s => this.onAppState(s));
+    console.log('[ExistenceLoop] 🧬 The Twin is now alive (governed).');
   }
 
   stop(): void {
+    this.pauseTimers();
+    lifeRhythmEngine.stop(); dreamEngine.stop(); surpriseEngine.stop();
+    this.appSub?.remove(); this.appSub = null;
+    this.running = false;
+    stateBus.update({ isOnline: false, interfaceState: 'dormant' });
+  }
+
+  private async flags(): Promise<{ dreams: boolean; surprises: boolean }> {
+    try {
+      const raw = await AsyncStorage.getItem('mytwin_feature_flags');
+      if (raw) return { dreams: true, surprises: true, ...JSON.parse(raw) };
+    } catch {}
+    return { dreams: true, surprises: true };
+  }
+
+  private onAppState(s: AppStateStatus): void {
+    if (s === 'active') { if (!this.intervalId) this.resumeTimers(); }
+    else { this.pauseTimers(); voiceGovernor.stop(); }
+  }
+
+  private resumeTimers(): void {
+    this.intervalId = setInterval(() => this.tick(), 1000);
+    this.slowIntervalId = setInterval(() => this.slowTick(), 30000);
+    this.verySlowIntervalId = setInterval(() => this.deepTick(), 300000);
+  }
+  private pauseTimers(): void {
     if (this.intervalId) clearInterval(this.intervalId);
     if (this.slowIntervalId) clearInterval(this.slowIntervalId);
     if (this.verySlowIntervalId) clearInterval(this.verySlowIntervalId);
-    lifeRhythmEngine.stop();
-    dreamEngine.stop();
-    surpriseEngine.stop();
-    console.log('[ExistenceLoop] The Twin rests.');
+    this.intervalId = this.slowIntervalId = this.verySlowIntervalId = null;
   }
 
   private tick(): void {
@@ -40,37 +72,24 @@ export class ExistenceLoop {
     lifeStateEngine.update();
     presenceEngine.applyLifeRhythm();
   }
-
   private slowTick(): void {
     worldAwarenessEngine.evaluate();
     sensorContextEngine.evaluate();
-
-    const random = Math.random();
-    if (random < 0.3) stateBus.emit('micro:gaze_shift', { direction: 'wandering' });
-    else if (random < 0.5) stateBus.emit('micro:breath_variation', {});
-    else if (random < 0.6) stateBus.emit('micro:tiny_pulse', {});
-
-    const selfState = selfAwarenessEngine.getState();
-    if (selfState.curiosity > 0.7 && Math.random() < 0.4) {
-      stateBus.emit('curiosity:triggered', { thought: selfState.internalMonologue, timestamp: Date.now() });
+    const r = Math.random();
+    if (r < 0.3) stateBus.emit('micro:gaze_shift', { direction: 'wandering' });
+    else if (r < 0.5) stateBus.emit('micro:breath_variation', {});
+    else if (r < 0.6) stateBus.emit('micro:tiny_pulse', {});
+    const self = selfAwarenessEngine.getState();
+    if (self.curiosity > 0.7 && Math.random() < 0.4) {
+      stateBus.emit('curiosity:triggered', { thought: self.internalMonologue, timestamp: Date.now() });
     }
-
     const rhythm = lifeRhythmEngine.getState();
-    if (rhythm.phase === 'deep_sleep' || rhythm.phase === 'dawn') {
-      dreamEngine.setSleeping(true);
-    } else {
-      dreamEngine.setSleeping(false);
-    }
+    dreamEngine.setSleeping(rhythm.phase === 'deep_sleep' || rhythm.phase === 'dawn');
   }
-
   private deepTick(): void {
     selfAwarenessEngine.evaluate();
     worldAwarenessEngine.evaluate();
-    const rhythm = lifeRhythmEngine.getState();
-    if (rhythm.shouldRest) {
-      presenceEngine.setEmotion('calm', 0.2);
-    }
+    if (lifeRhythmEngine.getState().shouldRest) presenceEngine.setEmotion('calm', 0.2);
   }
 }
-
 export const existenceLoop = new ExistenceLoop();

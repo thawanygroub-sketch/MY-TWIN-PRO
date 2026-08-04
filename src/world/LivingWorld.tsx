@@ -9,6 +9,7 @@ import { useTwinStore } from '../../store/useTwinStore';
 import { useConversationStore } from '../../store/useConversationStore';
 import { useStreamingChat } from '../../lib/useStreamingChat';
 import { bootstrapCoordinator } from '../core/BootstrapCoordinator';
+import { existenceLoop } from '../core/ExistenceLoop';
 import { voiceEngine } from '../../engine/voice/VoiceEngine';
 import { ConsciousBeing } from '../components/conscious/ConsciousBeing';
 import { SPACE, RADIUS } from '../../src/design/tokens/spacing';
@@ -23,6 +24,7 @@ export default function LivingWorld(){
  const [input,setInput]=useState(''); const [listening,setListening]=useState(false);
  useEffect(()=>{ let mounted=true;
    if(userId){ bootstrapCoordinator.bootstrap();
+      existenceLoop.start();
      (async()=>{ try{ const en=await AsyncStorage.getItem('mytwin_voice_enabled'); if(mounted&&en==='true') await voiceEngine.start(); }catch{} })(); }
    return ()=>{ mounted=false; voiceEngine.stop(); };
  },[userId]);
