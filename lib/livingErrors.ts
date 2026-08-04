@@ -8,11 +8,11 @@ export const LIVING_ERRORS = {
   AUTH: 'أحتاج لحظة لأتأكد أنك أنت. أنا هنا.',
 };
 export function livingError(e: unknown): string {
-  const msg = String((e as any)?.message ?? e ?? '').toLowerCase();
-  if (msg.includes('مهلة') || msg.includes('timeout')) return LIVING_ERRORS.TIMEOUT;
-  if (msg.includes('اتصال') || msg.includes('network') || msg.includes('fetch')) return LIVING_ERRORS.NETWORK;
-  if (msg.includes('429') || msg.includes('هدوء')) return LIVING_ERRORS.RATE;
-  if (msg.includes('طاقتي')) return LIVING_ERRORS.LIMIT;
-  if (msg.includes('401') || msg.includes('authorization')) return LIVING_ERRORS.AUTH;
+  const m = String((e as any)?.message ?? e ?? '').toLowerCase();
+  if (m.includes('مهلة') || m.includes('timeout')) return LIVING_ERRORS.TIMEOUT;
+  if (m.includes('اتصال') || m.includes('network') || m.includes('fetch')) return LIVING_ERRORS.NETWORK;
+  if (m.includes('429') || m.includes('هدوء')) return LIVING_ERRORS.RATE;
+  if (m.includes('طاقتي') || m.includes('limit')) return LIVING_ERRORS.LIMIT;
+  if (m.includes('401') || m.includes('authorization')) return LIVING_ERRORS.AUTH;
   return LIVING_ERRORS.SERVER;
 }

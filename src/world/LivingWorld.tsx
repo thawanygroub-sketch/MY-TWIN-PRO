@@ -1,154 +1,43 @@
+/** LivingWorld v2 — الصوت بإذن صريح فقط (خصوصية/بطارية)، الرسائل من المخزن،
+ * والحضور يُغذى من Envelope عبر useStreamingChat. */
 import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View, Text, TextInput, StyleSheet, KeyboardAvoidingView,
-  Platform, TouchableOpacity, ScrollView, Dimensions,
-} from 'react-native';
-import { useTwinBrain } from '../hooks/useTwinBrain';
+import { View, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRTL } from '../../lib/useRTL';
 import { useAppTheme } from '../../engine/colors';
 import { useTwinStore } from '../../store/useTwinStore';
+import { useConversationStore } from '../../store/useConversationStore';
+import { useStreamingChat } from '../../lib/useStreamingChat';
 import { bootstrapCoordinator } from '../core/BootstrapCoordinator';
-import { presenceEngine } from '../../engine/presence/PresenceEngine';
-import { audioMixer } from '../core/AudioMixer';
 import { voiceEngine } from '../../engine/voice/VoiceEngine';
 import { ConsciousBeing } from '../components/conscious/ConsciousBeing';
 import { SPACE, RADIUS } from '../../src/design/tokens/spacing';
 import { Send, Mic, MicOff } from 'lucide-react-native';
-
 const { height } = Dimensions.get('window');
-
-export default function LivingWorld() {
-  const userId = useTwinStore(s => s.userId) || '';
-  const { colors } = useAppTheme();
-  const { isThinking, streamedText, sendMessage, setUserId } = useTwinBrain();
-  const rtl = useRTL();
-
-  const [inputText, setInputText] = useState('');
-  const [messages, setMessages] = useState<Array<{ id: string; sender: 'user' | 'twin'; text: string }>>([]);
-  const [isListening, setIsListening] = useState(false);
-
-  useEffect(() => {
-    if (userId) {
-      setUserId(userId);
-      bootstrapCoordinator.bootstrap();
-      voiceEngine.start();
-    }
-    return () => voiceEngine.stop();
-  }, [userId, setUserId]);
-
-  const handleSend = useCallback(async () => {
-    if (!inputText.trim() || isThinking) return;
-    const text = inputText.trim();
-    setInputText('');
-    setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text }]);
-
-    const twinMsgId = (Date.now() + 1).toString();
-    setMessages(prev => [...prev, { id: twinMsgId, sender: 'twin', text: '' }]);
-
-    const response = await sendMessage(text);
-    if (response?.reply) {
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { ...updated[updated.length - 1], text: response.reply };
-        return updated;
-      });
-    }
-  }, [inputText, isThinking, sendMessage]);
-
-  const toggleListening = async () => {
-    if (isListening) {
-      voiceEngine.stopListening();
-      setIsListening(false);
-    } else {
-      voiceEngine.startListening();
-      setIsListening(true);
-    }
-  };
-
-  return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: colors.bg }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.entityWrapper}>
-        <ConsciousBeing />
-      </View>
-
-      <ScrollView style={styles.conversationContainer} contentContainerStyle={{ paddingBottom: 100 }}>
-        {messages.map(msg => (
-          <View
-            key={msg.id}
-            style={[
-              styles.messageBubble,
-              msg.sender === 'user' ? styles.userBubble : styles.twinBubble,
-              { backgroundColor: msg.sender === 'user' ? colors.accent + '20' : colors.card }
-            ]}
-          >
-            <Text style={[styles.messageText, { color: colors.text }]}>
-              {msg.text}
-            </Text>
-          </View>
-        ))}
-      </ScrollView>
-
-      <View style={[styles.inputContainer, { backgroundColor: colors.card }]}>
-        <TouchableOpacity onPress={toggleListening} style={styles.voiceBtn}>
-          {isListening ? <MicOff size={22} stroke={colors.accent} /> : <Mic size={22} stroke={colors.textSecondary} />}
-        </TouchableOpacity>
-        <TextInput
-          style={[styles.input, { textAlign: rtl.textAlign, color: colors.text }]}
-          value={inputText}
-          onChangeText={setInputText}
-          onSubmitEditing={handleSend}
-          editable={!isThinking}
-          placeholder={rtl.isRTL ? 'اكتب رسالتك...' : 'Write your message...'}
-          placeholderTextColor={colors.textSecondary}
-        />
-        <TouchableOpacity onPress={handleSend} disabled={isThinking}>
-          <Send size={22} stroke={isThinking ? colors.textSecondary : colors.accent} />
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
-  );
+export default function LivingWorld(){
+ const userId=useTwinStore(s=>s.userId)||'';
+ const { colors }=useAppTheme(); const rtl=useRTL();
+ const { isStreaming, sendStreamingMessage }=useStreamingChat();
+ const streamingText=useTwinStore(s=>(s as any).streamingText)||'';
+ const chatHistory=useConversationStore(s=>(s as any).chatHistory)||[];
+ const [input,setInput]=useState(''); const [listening,setListening]=useState(false);
+ useEffect(()=>{ let mounted=true;
+   if(userId){ bootstrapCoordinator.bootstrap();
+     (async()=>{ try{ const en=await AsyncStorage.getItem('mytwin_voice_enabled'); if(mounted&&en==='true') await voiceEngine.start(); }catch{} })(); }
+   return ()=>{ mounted=false; voiceEngine.stop(); };
+ },[userId]);
+ const handleSend=useCallback(async()=>{ const t=input.trim(); if(!t||isStreaming) return; setInput(''); await sendStreamingMessage(t); },[input,isStreaming,sendStreamingMessage]);
+ const toggleListen=async()=>{ if(listening){ voiceEngine.stopListening(); setListening(false);} else { try{ await voiceEngine.startListening(); setListening(true);}catch{} } };
+ return (<KeyboardAvoidingView style={[st.container,{backgroundColor:colors.bg}]} behavior={Platform.OS==='ios'?'padding':'height'}>
+  <View style={st.entity}><ConsciousBeing/></View>
+  <ScrollView style={st.conv} contentContainerStyle={{paddingBottom:100}}>
+   {chatHistory.map((m:any)=>(<View key={m.id} style={[st.bubble,m.role==='user'?st.user:st.twin,{backgroundColor:m.role==='user'?colors.accent+'20':colors.card}]}>
+     <Text style={[st.msg,{color:colors.text}]}>{m.role==='twin'&&isStreaming&&m.id===chatHistory[chatHistory.length-1]?.id?streamingText:m.content}</Text></View>))}
+  </ScrollView>
+  <View style={[st.input,{backgroundColor:colors.card}]}>
+   <TouchableOpacity onPress={toggleListen} style={st.voice}>{listening?<MicOff size={22} stroke={colors.accent}/>:<Mic size={22} stroke={colors.textSecondary}/>}</TouchableOpacity>
+   <TextInput style={[st.field,{textAlign:rtl.textAlign,color:colors.text}]} value={input} onChangeText={setInput} onSubmitEditing={handleSend} editable={!isStreaming} placeholder={rtl.isRTL?'اكتب رسالتك...':'Write your message...'} placeholderTextColor={colors.textSecondary}/>
+   <TouchableOpacity onPress={handleSend} disabled={isStreaming}><Send size={22} stroke={isStreaming?colors.textSecondary:colors.accent}/></TouchableOpacity>
+  </View></KeyboardAvoidingView>);
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  entityWrapper: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: height * 0.45,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  conversationContainer: {
-    flex: 1,
-    marginTop: height * 0.45,
-    paddingHorizontal: SPACE.lg,
-  },
-  messageBubble: {
-    maxWidth: '80%',
-    padding: SPACE.md,
-    borderRadius: 20,
-    marginBottom: SPACE.sm,
-  },
-  userBubble: { alignSelf: 'flex-end' },
-  twinBubble: { alignSelf: 'flex-start' },
-  messageText: { fontSize: 16 },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACE.sm,
-    marginHorizontal: SPACE.md,
-    marginBottom: SPACE.xl,
-    borderRadius: RADIUS.input,
-  },
-  voiceBtn: { padding: SPACE.sm },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    paddingHorizontal: SPACE.sm,
-  },
-});
+const st=StyleSheet.create({container:{flex:1},entity:{position:'absolute',top:0,left:0,right:0,height:height*0.45,justifyContent:'center',alignItems:'center'},conv:{flex:1,marginTop:height*0.45,paddingHorizontal:SPACE.lg},bubble:{maxWidth:'80%',padding:SPACE.md,borderRadius:20,marginBottom:SPACE.sm},user:{alignSelf:'flex-end'},twin:{alignSelf:'flex-start'},msg:{fontSize:16},input:{flexDirection:'row',alignItems:'center',padding:SPACE.sm,marginHorizontal:SPACE.md,marginBottom:SPACE.xl,borderRadius:RADIUS.input},voice:{padding:SPACE.sm},field:{flex:1,fontSize:16,paddingHorizontal:SPACE.sm}});
