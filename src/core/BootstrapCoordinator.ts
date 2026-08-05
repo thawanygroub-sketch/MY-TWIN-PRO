@@ -45,6 +45,7 @@ export class BootstrapCoordinator {
     try { lifeRhythmEngine.start(); } catch (e) {}
     try { sensorBridge.start(); } catch (e) {}
     try { runtime.start(); } catch (e) {}
+    try { require('./AudioEngine').audioEngine.bindEvents(); } catch (e) {}
 
     stateBus.update({ isOnline: true, interfaceState: 'twin', uptime: Date.now() });
     
