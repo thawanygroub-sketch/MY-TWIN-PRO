@@ -1,24 +1,29 @@
-"""Router registration v5 — مصدر حقيقة واحد + حراسة استيراد."""
-import importlib, logging
 from fastapi import APIRouter
-from app.core.release_flags import load_release_flags
-logger = logging.getLogger("routes")
-flags = load_release_flags()
-api_router = APIRouter()
-
-_CORE = ["auth","chat","memories","profile","account","onboarding","economy_routes","billing","system_routes"]
-_FEATURES = ["study_routes","dream_routes","task_manager_routes","business_routes",
- "life_coach_routes","creator_routes","code_lab_routes","image_lab_routes",
- "smart_home_routes","relationship","twin_state_routes","awareness_routes",
- "consciousness_routes","fingerprint_routes","passport_routes","graph_routes",
- "avatar_routes","stt_routes","tts","sync_routes","push","projects","goals",
- "feedback","reports","stats","recommendations","referral","ads","admin","admin_routes"]
-
-for name in _CORE + _FEATURES:
-    if not flags.enabled(name):
-        continue
-    try:
-        mod = importlib.import_module(f"app.api.routes.{name}")
-        api_router.include_router(mod.router)
-    except Exception as e:
-        logger.warning(f"⚠️ router '{name}' skipped: {e}")
+api_router = APIRouter(prefix="/api")
+from app.api.routes import auth, chat, memories, profile
+from app.api.routes import study_routes, code_lab_routes, business_routes
+from app.api.routes import creator_routes, dream_routes, life_coach_routes
+from app.api.routes import image_lab_routes, smart_home_routes, task_manager_routes
+from app.api.routes import economy_routes, ads, billing, referral
+from app.api.routes import unified_chat, push, perception_snapshot, system_routes
+api_router.include_router(auth.router)
+api_router.include_router(chat.router)
+api_router.include_router(memories.router)
+api_router.include_router(profile.router)
+api_router.include_router(study_routes.router)
+api_router.include_router(code_lab_routes.router)
+api_router.include_router(business_routes.router)
+api_router.include_router(creator_routes.router)
+api_router.include_router(dream_routes.router)
+api_router.include_router(life_coach_routes.router)
+api_router.include_router(image_lab_routes.router)
+api_router.include_router(smart_home_routes.router)
+api_router.include_router(task_manager_routes.router)
+api_router.include_router(economy_routes.router)
+api_router.include_router(ads.router)
+api_router.include_router(billing.router)
+api_router.include_router(referral.router)
+api_router.include_router(unified_chat.router)
+api_router.include_router(push.router)
+api_router.include_router(perception_snapshot.router)
+api_router.include_router(system_routes.router)
