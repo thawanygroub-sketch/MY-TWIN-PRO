@@ -74,6 +74,20 @@ class InteractionPipelineEngine:
             await experience_engine.process_event(user_id, {"type": "message",
                 "content": message[:200], "emotion": emo, "importance": res.get("memory_importance", 50)})
         except Exception: pass
+        # 6) لحام السلاسل: ذاكرة عاملة + أرشيف خام + نموذج عالم
+        try:
+            from app.twin_state.working_memory import working_memory
+            await working_memory.add_interaction(user_id, message, res.get("reply", ""), emo)
+        except Exception: pass
+        try:
+            from app.memory.archive.raw_archive import archive_message
+            await archive_message(user_id, message, "user", {"primary": emo, "intensity": inten})
+            await archive_message(user_id, res.get("reply", ""), "twin", {"primary": emo, "intensity": inten})
+        except Exception: pass
+        try:
+            from app.twin_state.world_model import world_model_engine as w
+            await w.update_world(user_id, message, res.get("reply", ""))
+        except Exception: pass
         res.update({"expression_intent": expr, "life_observation": obs})
         return res
 

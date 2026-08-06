@@ -1,4 +1,4 @@
-"""System Routes — نقطة الـ Cron للتوطيد الليلي."""
+"""System Routes — نقطة الـ Cron للتوطيد."""
 import os, logging
 from fastapi import APIRouter, Header, HTTPException
 logger = logging.getLogger("system_routes")

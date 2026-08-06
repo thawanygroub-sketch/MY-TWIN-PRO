@@ -1,4 +1,4 @@
-"""لقطات المستشعرات من الجسد إلى العقل — بلا محركات أمامية."""
+"""لقطات المستشعرات من الجسد إلى العقل."""
 import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends

@@ -81,7 +81,7 @@ export class UnifiedPerceptionEngine {
 
     // 2. Device Perception
     try {
-      const sensors = (stateBus as any).getState?.()?.device || {};
+      const sensors = require('../../engine/device/DevicePresenceEngine').devicePresenceEngine.getSensors();
       this.context.device = {
         deviceBattery: sensors.deviceBattery || 100,
         isCharging: sensors.isCharging || false,
@@ -178,7 +178,7 @@ export class UnifiedPerceptionEngine {
       }
 
       // Face detection
-      const sensors = (stateBus as any).getState?.()?.device || {};
+      const sensors = require('../../engine/device/DevicePresenceEngine').devicePresenceEngine.getSensors();
       this.context.activity.isUserLookingAtScreen = sensors.faceDetected || false;
     } catch (e) {}
   }

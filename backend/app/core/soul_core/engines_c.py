@@ -1,15 +1,12 @@
-"""Phase C/D Engines (SCS-001): معالجة ليلية، سرد يومي، مراجعة معتقدات، تناسق هوية،
-شبكة اجتماعية، حياة استباقية. كل محرك يدير جدوله بنفسه — النواة لا تتدخل."""
-import asyncio, logging, random
+"""Phase C/D Engines (SCS-001): ليلي، سرد يومي، معتقدات، تناسق، اجتماعي، استباقي."""
+import asyncio, logging, random, time, json
 from datetime import datetime, timezone, timedelta
 from .contract import SoulEvent, KernelContext
 from .engines_b import BaseEngine
 logger = logging.getLogger("soul_core.engines_c")
-
 def _now(): return datetime.now(timezone.utc)
 
 class OfflineCognitiveProcessor(BaseEngine):
-    """ليليًا: حلم + ضغط دلالي + تلخيص توطيد — العقل الباطن يرتب."""
     id, name, version = "offline_cognitive", "OfflineCognitiveProcessor", "1.0.0"
     handles = ["offline_processing"]
     async def start(self):
@@ -27,13 +24,12 @@ class OfflineCognitiveProcessor(BaseEngine):
         done = {}
         try:
             from app.twin_state.dreaming_engine import dreaming_engine
-            dream = await dreaming_engine.dream(uid); done["dream"] = bool(dream)
-        except Exception as e: done["dream"] = False
+            done["dream"] = bool(await dreaming_engine.dream(uid))
+        except Exception: done["dream"] = False
         try:
             from .engines_b import SemanticCompressorEngine
             comp = SemanticCompressorEngine(); comp.ctx = self.ctx
-            r = await comp.handle(SoulEvent("compress_daily", {"user_id": uid}, user_id=uid))
-            done["facts"] = r.get("facts", 0)
+            done["facts"] = (await comp.handle(SoulEvent("compress_daily", {"user_id": uid}, user_id=uid))).get("facts", 0)
         except Exception: done["facts"] = 0
         await self.ctx.store_engine_output(uid, "consolidation", {"ts": _now().isoformat(), **done})
         return done
@@ -46,7 +42,6 @@ class OfflineCognitiveProcessor(BaseEngine):
         except Exception: return []
 
 class EpisodicNarrativeEngine(BaseEngine):
-    """يروي اليوم كقصة واحدة تُحفظ في كتاب الحياة."""
     id, name, version = "episodic_narrative", "EpisodicNarrative", "1.0.0"
     handles = ["episodic_narrative"]
     async def handle(self, event: SoulEvent):
@@ -69,7 +64,6 @@ class EpisodicNarrativeEngine(BaseEngine):
         return {"narrative": narrative}
 
 class BeliefRevisionEngine(BaseEngine):
-    """يكتشف تناقض المعتقدات ويصححه بدل التراكم الأعمى."""
     id, name, version = "belief_revision", "BeliefRevision", "1.0.0"
     handles = ["belief_revision"]
     async def handle(self, event: SoulEvent):
@@ -78,12 +72,11 @@ class BeliefRevisionEngine(BaseEngine):
         uid = event.user_id or event.payload.get("user_id", "")
         try:
             from app.memory.unified_memory import unified_memory_engine as m
-            old_facts = await m.retrieve(uid, "[ENGINE:semantic_fact]", limit=10)
+            old = await m.retrieve(uid, "[ENGINE:semantic_fact]", limit=10)
             week = await m.get_patterns(uid, 7)
         except Exception: return {"revised": 0}
-        revised = 0
-        dom = week.get("dominant_emotion", "neutral")
-        for f in old_facts.get("memories", []):
+        revised = 0; dom = week.get("dominant_emotion", "neutral")
+        for f in old.get("memories", []):
             c = f.get("content", "")
             if "يشعر المستخدم كثيرًا بـ" in c and dom != "neutral" and dom not in c:
                 await self.ctx.store_engine_output(uid, "semantic_fact",
@@ -92,7 +85,6 @@ class BeliefRevisionEngine(BaseEngine):
         return {"revised": revised}
 
 class IdentityConsistencyEngine(BaseEngine):
-    """أسبوعيًا: هل ما زلتُ أنا؟ يقيس انجراف DNA ويسجله."""
     id, name, version = "identity_consistency", "IdentityConsistency", "1.0.0"
     handles = ["identity_consistency"]
     async def handle(self, event: SoulEvent):
@@ -105,22 +97,19 @@ class IdentityConsistencyEngine(BaseEngine):
             prev = await self.ctx.memory_retrieve(uid, "[ENGINE:identity_consistency]", limit=1)
             drift = 0.0
             for mem in prev.get("memories", []):
-                import json as _j
-                s = mem.get("content", ""); i = s.find("{")
+                i = mem.get("content", "").find("{")
                 if i >= 0:
-                    old = _j.loads(s[i:]).get("dna_now", {})
+                    old = json.loads(mem.get("content", "")[i:]).get("dna_now", {})
                     drift = sum(abs(dna_now.get(k, v) - old.get(k, v)) for k, v in dna_now.items())
-            score = max(0.0, 1.0 - drift)
+            score = round(max(0.0, 1.0 - drift), 3)
             await self.ctx.store_engine_output(uid, "identity_consistency",
-                {"score": round(score, 3), "dna_now": dna_now, "ts": _now().isoformat()})
+                {"score": score, "dna_now": dna_now, "ts": _now().isoformat()})
             if score < 0.85:
-                await t.add_self_reflection(uid, f"تغيرتُ قليلًا هذا الأسبوع (تناسق {score:.2f}). هذا نمو، لا انقطاع.")
-            return {"score": round(score, 3)}
-        except Exception as e:
-            return {"score": None}
+                await t.add_self_reflection(uid, f"تغيرتُ قليلًا هذا الأسبوع (تناسق {score}). هذا نمو، لا انقطاع.")
+            return {"score": score}
+        except Exception: return {"score": None}
 
 class SocialGraphEngine(BaseEngine):
-    """يحول أشخاص نموذج العالم إلى بصيرة اجتماعية."""
     id, name, version = "social_graph", "SocialGraph", "1.0.0"
     handles = ["social_graph_update"]
     async def handle(self, event: SoulEvent):
@@ -133,13 +122,11 @@ class SocialGraphEngine(BaseEngine):
         except Exception: return {"persons": 0}
         persons = snap.get("top_persons", [])
         if persons:
-            top = persons[0].get("name", "")
             await self.ctx.store_engine_output(uid, "semantic_fact",
-                {"type": "social", "fact": f"أكثر شخص يذكره المستخدم: {top}", "ts": _now().isoformat()})
+                {"type": "social", "fact": f"أكثر شخص يذكره المستخدم: {persons[0].get('name', '')}", "ts": _now().isoformat()})
         return {"persons": len(persons)}
 
 class ProactiveLifeEngine(BaseEngine):
-    """الحياة الاستباقية: استيقاظ مُستنتَج + مبادرة فضول + إشعارات حقيقية بقواعد الدستور."""
     id, name, version = "proactive_life", "ProactiveLife", "1.0.0"
     handles = ["proactive_check"]
     async def start(self):
@@ -154,26 +141,22 @@ class ProactiveLifeEngine(BaseEngine):
         from app.core.living_messages import MORNING, PROACTIVE
         sent = 0
         for u in await self._push_users():
-            uid = u["id"]; token = u["push_token"]
-            today = await self._today_count(uid)
-            if today >= 2: continue
-            hour = _now().hour
-            msg = None
-            if 5 <= hour < 10 and today == 0:
+            uid, token = u["id"], u["push_token"]
+            if await self._today_count(uid) >= 2: continue
+            hour = _now().hour; msg = None
+            if 5 <= hour < 10:
                 msg = random.choice(MORNING)
             else:
                 try:
                     from app.twin_state.curiosity_dynamics import curiosity_dynamics_engine as c
                     from app.twin_state.context_awareness_engine import context_awareness_engine as ca
-                    snap = await ca.get_full_context(uid, "neutral", "idle")
-                    dec = await c.should_be_proactive(uid, snap)
+                    dec = await c.should_be_proactive(uid, await ca.get_full_context(uid, "neutral", "idle"))
                     if dec.get("should_proact"):
                         msg = dec.get("suggested_question") or random.choice(PROACTIVE["curiosity"])
                 except Exception: pass
             if not msg: continue
             from app.infrastructure.push.expo_push import send_push
-            ok = await send_push(token, "توأمك", msg)
-            if ok:
+            if await send_push(token, "توأمك", msg):
                 await self.ctx.store_engine_output(uid, "proactive_push", {"msg": msg, "ts": _now().isoformat()})
                 sent += 1
         return {"sent": sent}
@@ -190,4 +173,3 @@ class ProactiveLifeEngine(BaseEngine):
             today = _now().date().isoformat()
             return sum(1 for m in outs.get("memories", []) if today in m.get("created_at", ""))
         except Exception: return 0
-import time
