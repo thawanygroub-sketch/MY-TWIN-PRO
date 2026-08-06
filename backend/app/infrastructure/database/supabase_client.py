@@ -23,3 +23,26 @@ def get_service_role_db() -> Client:
 
 def get_db() -> Client:
     return get_service_role_db()
+
+
+def reset_db():
+    """Compat layer — إعادة ضبط الاتصال."""
+    try:
+        return get_db()
+    except Exception:
+        return None
+
+
+def check_db_health():
+    try:
+        get_db().table("profiles").select("id").limit(1).execute()
+        return {"status": "ok"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+
+def get_profile(user_id: str):
+    try:
+        return get_db().table("profiles").select("*").eq("id", user_id).single().execute()
+    except Exception:
+        return None
