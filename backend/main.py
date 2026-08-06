@@ -57,6 +57,12 @@ async def unhandled(request: Request, exc: Exception):
     rid = uuid.uuid4().hex[:12]; logger.error(f"[{rid}] unhandled: {exc}")
     return JSONResponse(status_code=500, content={"error": {"code": "INTERNAL",
         "message": "لحظة صعوبة عابرة. أنا ما زلت هنا.", "request_id": rid}})
+@app.get("/")
+async def root():
+    from app.core.soul_core import soul_kernel
+    st = soul_kernel.status()
+    return {"name": "My Twin", "status": "alive", "kernel": st["kernel"], "engines": len(st["engines"])}
+
 @app.get("/health")
 async def health():
     from app.core.soul_core import soul_kernel
