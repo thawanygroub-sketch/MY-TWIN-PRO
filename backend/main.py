@@ -58,7 +58,12 @@ async def unhandled(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"error": {"code": "INTERNAL",
         "message": "لحظة صعوبة عابرة. أنا ما زلت هنا.", "request_id": rid}})
 @app.get("/health")
-async def health(): return JSONResponse(content={"api": "healthy", "version": "23.0.0"})
+async def health():
+    from app.core.soul_core import soul_kernel
+    st = soul_kernel.status()
+    return JSONResponse(content={"api": "healthy", "version": "23.0.0",
+        "kernel": st["kernel"], "engines": len(st["engines"]),
+        "disabled": [e for e, d in st["engines"].items() if d["disabled"]]})
 @app.get("/admin/kernel")
 async def kernel_status():
     from app.core.soul_core import soul_kernel
