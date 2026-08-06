@@ -114,6 +114,12 @@ class ExistenceLoop:
 
     async def _hourly_tick(self):
         users = await self._get_active_users(72, 5)
+        for u in users[:3]:
+            try:
+                from app.core.soul_core import soul_kernel, SoulEvent
+                await soul_kernel.dispatch(SoulEvent("compress_daily", {"user_id": u["id"]}, user_id=u["id"], source="existence"))
+            except Exception:
+                pass
         from app.memory.unified_memory import unified_memory_engine
         for u in users[:3]:
             user_id = u["id"]

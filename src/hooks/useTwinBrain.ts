@@ -113,6 +113,13 @@ export function useTwinBrain(initialUserId: string = '', initialLang: string = '
             response.twin_emotional_state.intensity || 0.5,
           );
         }
+    // ✅ الجسد يشعر: ترجمة نية التعبير إلى حركة وصوت
+    const expr = (response as any).expression_intent;
+    if (expr) {
+      if ((expr.smile || 0) > 0.4) presenceEngine.addMicroExpression('head_nod', expr.smile);
+      if ((expr.concern || 0) > 0.4) presenceEngine.addMicroExpression('membrane_shiver', expr.concern);
+      if ((expr.pause || 0) > 0) await new Promise(r => setTimeout(r, Math.min(expr.pause * 800, 1200)));
+    }
       }
 
       if (response.reply) {
