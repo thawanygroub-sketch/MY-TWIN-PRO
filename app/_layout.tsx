@@ -4,14 +4,19 @@ import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { syncInitialTheme, useAppTheme } from '../engine/colors';
+
 const g: any = global as any;
 if (g.ErrorUtils) {
   const prev = g.ErrorUtils.getGlobalHandler ? g.ErrorUtils.getGlobalHandler() : null;
   g.ErrorUtils.setGlobalHandler((error: any, isFatal?: boolean) => {
-    try { console.error('[MYTWIN-FATAL]', String(error?.message), String(error?.stack || '').slice(0, 800)); } catch {}
+    try {
+      console.error('[MYTWIN-FATAL]', String(error?.message));
+      console.error('[MYTWIN-FATAL-STACK]', String(error?.stack || '').slice(0, 800));
+    } catch {}
     if (prev) prev(error, isFatal);
   });
 }
+
 function RootNavigator() {
   const { isDark } = useAppTheme();
   return (
@@ -29,6 +34,7 @@ function RootNavigator() {
     </SafeAreaProvider>
   );
 }
+
 export default function RootLayout() {
   useEffect(() => { syncInitialTheme(); }, []);
   return <RootNavigator />;
