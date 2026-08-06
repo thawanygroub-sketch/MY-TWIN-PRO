@@ -8,6 +8,7 @@ from app.api.dependencies.auth import get_current_user_id, get_user_tier
 from app.safety.safety_layer import validate_response, audit_entry
 from app.core.living_messages import FAILURE, ENERGY
 from app.core.response_envelope import build_envelope
+from app.twin_state.life_log import write_daily_life_log
 from app.infrastructure.database.supabase_client import get_db
 
 logger = logging.getLogger("chat_routes")
@@ -93,6 +94,10 @@ async def chat(req: ChatRequest,
     if not limits.get("can_send", True):
         reply = ENERGY["exhausted"] + "\nيمكنك منحي انتعاشًا أو ترقيتي لأبقى بكامل حضوري."
 
+    try:
+        await write_daily_life_log(user_id, req.device_info or {})
+    except Exception:
+        pass
     res["reply"] = reply
     res["silence_ms"] = res.get("silence_ms") or SILENCE_MS.get(res.get("emotion"), 1500)
     return build_envelope(res, rid)

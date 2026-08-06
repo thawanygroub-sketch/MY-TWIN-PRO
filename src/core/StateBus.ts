@@ -17,6 +17,7 @@ export interface TwinState {
   breath: BreathState; avatar: AvatarState; emotion: EmotionalState; spaceEnergy: SpaceEnergy; silenceLevel: number;
   conversation: ConversationState; memory: MemoryState; workspace: WorkspaceState; relationship: RelationshipState;
   isOnline: boolean; isDegraded: boolean; uptime: number; personalityDNA: Record<string, number>;
+  expressionIntent?: { breath: string; smile: number; pause: number; concern: number };
 }
 export const STATE_EVENTS = { MODE_CHANGED:'state:mode_changed', EMOTION_CHANGED:'state:emotion_changed', PRESENCE_CHANGED:'state:presence_changed', AWARENESS_CHANGED:'state:awareness_changed', BOND_CHANGED:'state:bond_changed', STARTED_SPEAKING:'state:started_speaking', STOPPED_SPEAKING:'state:stopped_speaking', MEMORY_RETRIEVED:'state:memory_retrieved', PROCESSING_COMPLETE:'state:processing_complete', THOUGHT_COMPLETE:'cognitive:thought_complete' } as const;
 const DEFAULT_STATE: TwinState = {
