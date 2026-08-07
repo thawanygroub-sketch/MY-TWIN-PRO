@@ -1,83 +1,52 @@
-import { audioEngine } from './AudioEngine';
-import { stateBus } from './StateBus';
+import { Audio } from 'expo-av';
+import { EventBus } from './EventBus';
+const COOLDOWN_MS = 1500;
+const SOUND_SOURCES: Record<string, any> = {
 
-const EMOTION_AUDIO_MAP: Record<string, string[]> = {
-  joy: ['success_soft', 'celebration'],
-  sadness: ['silence_room', 'breathing_loop'],
-  calm: ['silence_room', 'breathing_loop'],
-  love: ['heartbeat_energy', 'bond_pulse'],
-  anger: ['silence_room', 'energy_hum'],
-  fear: ['silence_room', 'neural_hum'],
-  neutral: ['ambience_space', 'breathing_loop'],
 };
-
-const BEHAVIOR_AUDIO: Record<string, string> = {
-  startup: 'startup_birth',
-  first_breath: 'first_breath',
-  heartbeat: 'heartbeat_energy',
-  eyes_open: 'eyes_open',
-  awakening: 'awakening_glow',
-  celebrate: 'milestone',
-  comfort: 'trust_up',
-  thinking_start: 'thinking_start',
-  memory_found: 'memory_found',
-  bond_pulse: 'bond_pulse',
-  workspace_enter: 'workspace_enter',
-  head_nod: 'head_nod',
-  head_shake: 'head_shake',
-};
-
-export class AudioMixer {
-  private currentContext: string = 'conversation';
-  private activeLayers: Set<string> = new Set();
-
-  constructor() {
-    this.initBaseLayers();
-    this.listenToPresence();
-  }
-
-  private async initBaseLayers(): Promise<void> {
-    await audioEngine.init();
-    audioEngine.startAmbience().catch(() => {});
-  }
-
-  private listenToPresence(): void {
-    stateBus.on('presence:state_updated', (_: string, data: any) => {
-      if (!data) return;
-      if (data.emotion && data.emotionIntensity > 0.3) {
-        this.setEmotionAudio(data.emotion);
-      }
-      if (data.silenceLevel > 0.5) {
-        this.activeLayers.forEach(id => audioEngine.stop(id).catch(() => {}));
-        this.activeLayers.clear();
-      }
-    });
-  }
-
-  setContext(context: string): void { this.currentContext = context; }
-
-  playEffect(effect: string): void {
+class AudioMixer {
+  private sounds: Map<string, Audio.Sound> = new Map();
+  private lastPlay: Map<string, number> = new Map();
+  private ready = false;
+  private context: string = 'ambient';
+  private volume = 0.6;
+  async init(): Promise<void> {
+    if (this.ready) return;
     try {
-      const id = BEHAVIOR_AUDIO[effect] || effect;
-      if (id) audioEngine.play(id).catch(() => {});
-    } catch (e) {}
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true, staysActiveInBackground: false, shouldDuckAndroid: true });
+      this.ready = true;
+    } catch {}
   }
-
-  setEmotionAudio(emotion: string): void {
-    this.activeLayers.forEach(id => audioEngine.stop(id).catch(() => {}));
-    this.activeLayers.clear();
-    const layers = EMOTION_AUDIO_MAP[emotion] || EMOTION_AUDIO_MAP.neutral;
-    layers.forEach(id => {
-      audioEngine.play(id).catch(() => {});
-      this.activeLayers.add(id);
-    });
+  setContext(ctx: string): void {
+    this.context = ctx;
+    if (ctx === 'silence') this.volume = 0;
+    else if (ctx === 'conversation') this.volume = 0.35;
+    else this.volume = 0.6;
   }
-
-  playBreath(): void { audioEngine.play('first_breath').catch(() => {}); }
-  playHeartbeat(): void { audioEngine.play('heartbeat_energy').catch(() => {}); }
-  playMemoryEcho(): void { audioEngine.play('memory_found').catch(() => {}); }
-  playTyping(): void { audioEngine.play('typing').catch(() => {}); }
-  playThinking(): void { audioEngine.play('thinking_start').catch(() => {}); }
+  getContext(): string { return this.context; }
+  async playEffect(name: string): Promise<void> {
+    if (this.volume <= 0) return;
+    if (!this.ready) await this.init();
+    const now = Date.now();
+    if (now - (this.lastPlay.get(name) || 0) < COOLDOWN_MS) return;
+    this.lastPlay.set(name, now);
+    try {
+      let sound = this.sounds.get(name);
+      if (!sound) {
+        const src = SOUND_SOURCES[name];
+        if (!src) return;
+        const { sound: s } = await Audio.Sound.createAsync(src, { shouldPlay: false, volume: this.volume });
+        sound = s; this.sounds.set(name, sound);
+      }
+      await sound.setVolumeAsync(this.volume);
+      await sound.setPositionAsync(0);
+      await sound.playAsync();
+    } catch {}
+  }
+  bindEvents(): void {
+    EventBus.on('USER_SEND_MESSAGE', () => this.playEffect('message_sent'));
+    EventBus.on('MEMORY_SURFACED', () => this.playEffect('memory_found'));
+    EventBus.on('MILESTONE_REACHED', () => this.playEffect('milestone'));
+  }
 }
-
 export const audioMixer = new AudioMixer();

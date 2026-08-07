@@ -40,6 +40,8 @@ export class TwinRuntime {
   private pauseTime: number = 0;
   private totalPausedDuration: number = 0;
   private uptimeIntervalId: ReturnType<typeof setInterval> | null = null;
+  private lastBreathEmit: number = 0;
+  
 
   constructor(config: Partial<RuntimeConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -126,7 +128,11 @@ export class TwinRuntime {
       const rawPhase = (elapsed % duration) / duration;
       const phase = Math.sin(rawPhase * Math.PI * 2) * 0.5 + 0.5;
       const isHolding = phase > 0.95 || phase < 0.05;
-      StateBus.update({ breath: { phase, duration, intensity: this.getCurrentBreathIntensity(), isHolding }, uptime: this.getUptime() });
+      // 🟢 throttle: تحديث StateBus كل 100ms بدل كل إطار
+      if (elapsed - this.lastBreathEmit >= 100) {
+        this.lastBreathEmit = elapsed;
+        StateBus.update({ breath: { phase, duration, intensity: this.getCurrentBreathIntensity(), isHolding }, uptime: this.getUptime() });
+      }
       this.breathAnimationId = requestAnimationFrame(tick);
     };
     this.breathAnimationId = requestAnimationFrame(tick);

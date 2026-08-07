@@ -52,7 +52,7 @@ const generateEyePath = (centerX: number, centerY: number, eyeWidth: number, eye
   return `M ${centerX + gazeX} ${top} C ${right + cs} ${top + eh * 0.2}, ${right + cs} ${bottom - eh * 0.2}, ${centerX + gazeX} ${bottom} C ${left - cs} ${bottom - eh * 0.2}, ${left - cs} ${top + eh * 0.2}, ${centerX + gazeX} ${top} Z`;
 };
 export default function Genesis() {
-  useFonts({ Tajawal_800ExtraBold });
+  const [fontsLoaded] = useFonts({ Tajawal_800ExtraBold });
   const { colors } = useAppTheme();
   const { setAuth } = useTwinStore();
   const lang = detectUserLanguage();
@@ -147,6 +147,8 @@ export default function Genesis() {
   const handleGoogleLogin = async () => { setAuthLoading(true); setAuthError(''); try { const d = await genesisCoordinator.loginWithGoogle(); setAuth(d.user_id); tryPlay('celebrate'); } catch (e: any) { setAuthError(e.message || 'فشل المصادقة'); } finally { setAuthLoading(false); } };
   const handleEmailAuth = async () => { if (!email.trim() || !password.trim()) return; setAuthLoading(true); setAuthError(''); try { const d = await genesisCoordinator.loginWithEmail(email.trim(), password); setAuth(d.user_id); tryPlay('celebrate'); } catch (e: any) { setAuthError(e.message || 'فشل المصادقة'); } finally { setAuthLoading(false); } };
   const handleSignup = async () => { if (!email.trim() || !password.trim()) return; setAuthLoading(true); setAuthError(''); try { const d = await authService.signup(email.trim(), password, lang === 'ar' ? 'توأمك' : 'MyTwin', lang); setAuth(d.user_id); tryPlay('celebrate'); } catch (e: any) { setAuthError(e.message || 'فشل المصادقة'); } finally { setAuthLoading(false); } };
+  if (!fontsLoaded) return null;
+  if (!fontsLoaded) return null;
   return (
     <KeyboardAvoidingView style={[styles.root, { backgroundColor: '#000005' }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar hidden />
@@ -155,7 +157,6 @@ export default function Genesis() {
           <Canvas style={{ width, height: height * 0.8 }}>
             <Rect x={0} y={0} width={width} height={height * 0.8} color="#000005" />
             <Circle cx={CX} cy={CY} r={80 + baseRadius.value} opacity={entityOpacity.value * 0.9}>
-              <Paint><BlurMask blur={22} style="normal" /></Paint>
               <RadialGradient c={vec(CX, CY)} r={80 + baseRadius.value} colors={['#A855F766', 'transparent']} />
             </Circle>
             <Path path={membranePath} color="#B8A0D0" opacity={entityOpacity.value * 1.0} style="fill">
@@ -164,15 +165,14 @@ export default function Genesis() {
             <Path path={membranePath} color="#D0C0E8" opacity={entityOpacity.value * 0.95} style="stroke" strokeWidth={2}>
               <Paint><BlurMask blur={3} style="solid" /></Paint>
             </Path>
-            {eyeOpacity.value > 0 && (
+            {(
               <>
                 <Path path={eyePath} color="#D0C0E8" opacity={eyeOpacity} style="fill">
                   <Paint><BlurMask blur={3} style="solid" /></Paint>
                 </Path>
                 <Circle cx={CX + eyeGazeX.value} cy={CY - 8 + eyeGazeY.value} r={4 * (1 + eyeFocus.value * 0.5)} color="#0A0020" opacity={eyeOpacity} />
                 <Circle cx={CX} cy={CY - 8} r={40} opacity={eyeOpacity.value * 0.55}>
-                  <Paint><BlurMask blur={10} style="normal" /></Paint>
-                  <RadialGradient c={vec(CX, CY - 8)} r={40} colors={['#A855F7', 'transparent']} />
+                    <RadialGradient c={vec(CX, CY - 8)} r={40} colors={['#A855F7', 'transparent']} />
                 </Circle>
               </>
             )}

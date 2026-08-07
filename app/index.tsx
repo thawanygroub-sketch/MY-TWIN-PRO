@@ -1,65 +1,91 @@
 import React, { useEffect } from 'react';
 import { View, Image, Text, StyleSheet, Dimensions, StatusBar } from 'react-native';
 import { router } from 'expo-router';
-import { Canvas, Circle, Path, RadialGradient, vec, BlurMask, Paint } from '@shopify/react-native-skia';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSequence, withSpring, withDelay, Easing, useFrameCallback } from 'react-native-reanimated';
+import { Canvas, Path, RadialGradient, LinearGradient, vec, BlurMask, Paint } from '@shopify/react-native-skia';
+import Animated, { useSharedValue, useAnimatedStyle, useDerivedValue, withTiming, withSequence, withSpring, Easing, useFrameCallback } from 'react-native-reanimated';
 import { audioMixer } from '../src/core/AudioMixer';
 const { width, height } = Dimensions.get('window');
 const CX = width / 2, CY = height * 0.42;
-const buildStars = (t: number): string => {
+const noise = (x: number, y: number, s: number) => {
+  'worklet';
+  const n = Math.sin(x * 12.9898 + y * 78.233 + s * 43758.5453) * 43758.5453;
+  return n - Math.floor(n);
+};
+const fbm = (x: number, y: number, s: number) => {
+  'worklet';
+  let v = 0, a = 0.5, f = 1;
+  for (let i = 0; i < 2; i++) { v += a * noise(x * f, y * f, s + i); a *= 0.5; f *= 2; }
+  return v;
+};
+const genMembrane = (t: number, R: number, breath: number, form: number) => {
+  'worklet';
+  if (form <= 0.01 || R <= 0) return '';
+  const pts = 48; let d = '';
+  for (let i = 0; i < pts; i++) {
+    const ang = (i / pts) * Math.PI * 2;
+    const org = Math.sin(ang * 3 + t * 0.7) * 0.32 + Math.cos(ang * 5 - t * 0.6) * 0.22
+      + Math.sin(ang * 7 + t * 1.1) * 0.18 + fbm(Math.cos(ang) * 2, t * 0.15, 42) * 0.4;
+    const r = Math.max(2, R * form * (1 + org + breath * 0.16 + Math.sin(t * 25) * 0.04));
+    d += (i === 0 ? 'M ' : ' L ') + (CX + Math.cos(ang) * r) + ' ' + (CY + Math.sin(ang) * r);
+  }
+  return d + ' Z';
+};
+const genStream = (t: number, yBase: number, seed: number, amp: number) => {
+  'worklet';
+  const seg = 6;
+  let d = 'M 0 ' + (yBase + (noise(0, t * 0.3, seed) - 0.5) * 2 * amp);
+  for (let i = 1; i <= seg; i++) {
+    const x = (width / seg) * i;
+    const y = yBase + (noise(i * 0.7, t * 0.3, seed) - 0.5) * 2 * amp + Math.sin(t * 0.8 + i + seed) * amp * 0.25;
+    d += ' Q ' + (x - width / seg / 2) + ' ' + (yBase + (noise((i - 0.5) * 0.7, t * 0.3, seed) - 0.5) * 2 * amp) + ' ' + x + ' ' + y;
+  }
+  return d;
+};
+const genEmbers = (t: number) => {
+  'worklet';
   let d = '';
-  for (let i = 0; i < 18; i++) {
-    const seed = i * 97.13; const x = (seed * 13.7) % width; const speed = 10 + (i % 5) * 6;
-    const y = height - ((seed * 3.1 + t * speed) % (height + 40));
-    const tw = 0.5 + 0.5 * Math.sin(t * 2 + i * 1.7);
-    if (tw < 0.2) continue;
-    const r = 0.8 + tw * 1.8;
-    d += `M ${x + r} ${y} A ${r} ${r} 0 1 0 ${x - r} ${y} A ${r} ${r} 0 1 0 ${x + r} ${y} `;
+  for (let i = 0; i < 12; i++) {
+    const seed = i * 97.13;
+    const x = (seed * 13.7) % width;
+    const y = height - ((seed * 3.1 + t * (26 + (i % 5) * 10)) % (height + 80));
+    const sway = Math.sin(t * 1.4 + i) * 3;
+    d += 'M ' + (x + sway) + ' ' + y + ' L ' + (x + sway * 1.4) + ' ' + (y - 6 - (i % 3) * 5) + ' ';
   }
   return d;
 };
 export default function Index() {
-  const sparkA = useSharedValue(0); const logoO = useSharedValue(0); const logoS = useSharedValue(0.92);
-  const textO = useSharedValue(0); const exitO = useSharedValue(1); const floatY = useSharedValue(0);
-  const b1x = useSharedValue(CX); const b1y = useSharedValue(height * 0.3);
-  const b2x = useSharedValue(CX); const b2y = useSharedValue(height * 0.62);
-  const b3x = useSharedValue(CX); const b3y = useSharedValue(height * 0.8);
-  const stars = useSharedValue(''); const starsA = useSharedValue(0.4);
-  const r1 = useSharedValue(0); const a1 = useSharedValue(0); const r2 = useSharedValue(0); const a2 = useSharedValue(0);
-  const ringR = useSharedValue(90); const ringO = useSharedValue(0);
-  useFrameCallback((fi) => {
-    const t = fi.timeSinceFirstFrame * 0.001;
-    b1x.value = CX + Math.sin(t * 0.11) * width * 0.25; b1y.value = height * 0.3 + Math.cos(t * 0.07) * 40;
-    b2x.value = CX - Math.sin(t * 0.09 + 2) * width * 0.3; b2y.value = height * 0.62 + Math.sin(t * 0.05) * 50;
-    b3x.value = CX + Math.cos(t * 0.13 + 4) * width * 0.2; b3y.value = height * 0.8 + Math.cos(t * 0.06) * 30;
-    floatY.value = Math.sin(t * 0.9) * 6;
-    stars.value = buildStars(t); starsA.value = 0.35 + 0.25 * Math.sin(t * 1.3);
-    const span = 3.2; const f1 = (t % span) / span, f2 = ((t + span / 2) % span) / span;
-    r1.value = 90 + f1 * 170; a1.value = (1 - f1) * 0.35;
-    r2.value = 90 + f2 * 170; a2.value = (1 - f2) * 0.28;
-  });
+  const time = useSharedValue(0);
+  const form = useSharedValue(0); const glowO = useSharedValue(0); const edgeO = useSharedValue(0);
+  const streamO = useSharedValue(0); const emberO = useSharedValue(0);
+  const logoO = useSharedValue(0); const logoS = useSharedValue(0.92);
+  const textO = useSharedValue(0); const exitO = useSharedValue(1);
+  useFrameCallback((fi) => { time.value = fi.timeSinceFirstFrame; });
+  const membrane = useDerivedValue(() => genMembrane(time.value * 0.001, 86, Math.sin(time.value * 0.0016) * 0.5 + 0.5, form.value));
+  const streamA = useDerivedValue(() => genStream(time.value * 0.001, height * 0.3, 7, 26));
+  const streamB = useDerivedValue(() => genStream(time.value * 0.0011 + 2, height * 0.55, 13, 34));
+  const streamC = useDerivedValue(() => genStream(time.value * 0.0009 + 4, height * 0.78, 29, 22));
+  const embers = useDerivedValue(() => genEmbers(time.value * 0.001));
   const fadeStyle = useAnimatedStyle(() => ({ opacity: exitO.value }));
-  const logoStyle = useAnimatedStyle(() => ({ opacity: logoO.value, transform: [{ scale: logoS.value }, { translateY: floatY.value }] as any }));
+  const logoStyle = useAnimatedStyle(() => ({ opacity: logoO.value, transform: [{ scale: logoS.value }] as any }));
   const textStyle = useAnimatedStyle(() => ({ opacity: textO.value }));
   useEffect(() => {
     const play = (e: string) => { try { audioMixer.playEffect(e); } catch {} };
     const seq = async () => {
       await new Promise(r => setTimeout(r, 900));
-      sparkA.value = withSequence(withTiming(0.9, { duration: 700 }), withTiming(0.2, { duration: 900 }));
-      play('first_breath');
+      glowO.value = withSequence(withTiming(0.9, { duration: 700 }), withTiming(0.55, { duration: 900 }));
+      form.value = withTiming(0.35, { duration: 700 }); play('first_breath');
       await new Promise(r => setTimeout(r, 1200));
+      form.value = withSpring(1, { damping: 14, stiffness: 110 });
+      edgeO.value = withTiming(0.9, { duration: 800 });
       logoO.value = withTiming(1, { duration: 1200, easing: Easing.out(Easing.cubic) });
-      logoS.value = withSpring(1, { damping: 14, stiffness: 120 });
-      play('awakening_glow');
+      logoS.value = withSpring(1, { damping: 14, stiffness: 120 }); play('awakening_glow');
       await new Promise(r => setTimeout(r, 1500));
       textO.value = withTiming(0.65, { duration: 1500 });
+      streamO.value = withTiming(0.7, { duration: 1200 });
+      emberO.value = withTiming(0.5, { duration: 1200 }); play('workspace_enter');
       await new Promise(r => setTimeout(r, 1800));
-      play('workspace_enter');
-      ringO.value = withTiming(0.9, { duration: 200 });
-      ringR.value = withTiming(width * 1.4, { duration: 900, easing: Easing.out(Easing.cubic) });
-      ringO.value = withDelay(300, withTiming(0, { duration: 600 }));
-      exitO.value = withDelay(350, withTiming(0, { duration: 600 }));
-      setTimeout(() => router.replace('/genesis'), 1000);
+      exitO.value = withTiming(0, { duration: 700 });
+      setTimeout(() => router.replace('/genesis'), 750);
     };
     seq();
   }, []);
@@ -68,16 +94,16 @@ export default function Index() {
       <StatusBar hidden />
       <Animated.View style={[st.fill, fadeStyle]}>
         <Canvas style={st.fill}>
-          <Circle cx={b1x} cy={b1y} r={210} color="#7C3AED" opacity={0.3}><BlurMask blur={40} style="normal" /></Circle>
-          <Circle cx={b2x} cy={b2y} r={240} color="#4C1D95" opacity={0.35}><BlurMask blur={44} style="normal" /></Circle>
-          <Circle cx={b3x} cy={b3y} r={170} color="#0EA5E9" opacity={0.18}><BlurMask blur={36} style="normal" /></Circle>
-          <Path path={stars} color="#E9D5FF" opacity={starsA} style="fill" />
-          <Circle cx={CX} cy={CY} r={r1} color="#A855F7" style="stroke" strokeWidth={2} opacity={a1} />
-          <Circle cx={CX} cy={CY} r={r2} color="#A855F7" style="stroke" strokeWidth={1.5} opacity={a2} />
-          <Circle cx={CX} cy={CY} r={30} opacity={sparkA}><Paint><RadialGradient c={vec(CX, CY)} r={30} colors={['#FFFFFF', '#A855F7', '#00000000']} /></Paint></Circle>
-          <Circle cx={CX} cy={CY} r={120} color="#A855F7" opacity={0.4}><BlurMask blur={24} style="normal" /></Circle>
-          <Circle cx={CX} cy={CY} r={ringR} color="#E9D5FF" style="stroke" strokeWidth={3} opacity={ringO} />
-          <Circle cx={CX} cy={CY} r={height * 0.75}><Paint><RadialGradient c={vec(CX, CY)} r={height * 0.75} colors={['#00000000', '#00000000', '#000005E6']} /></Paint></Circle>
+          <Path path={membrane} opacity={glowO}>
+            <Paint><BlurMask blur={14} style="normal" /><RadialGradient c={vec(CX, CY)} r={150} colors={['#C4B5FD', '#8B5CF6', '#00000000']} /></Paint>
+          </Path>
+          <Path path={membrane} color="#E9D5FF" style="stroke" strokeWidth={2} opacity={edgeO}>
+            <Paint><BlurMask blur={3} style="solid" /></Paint>
+          </Path>
+          <Path path={streamA} style="stroke" strokeWidth={3} opacity={streamO}><Paint><LinearGradient start={vec(0, 0)} end={vec(width, 0)} colors={['#00000000', '#A855F7', '#00000000']} /></Paint></Path>
+          <Path path={streamB} style="stroke" strokeWidth={2.5} opacity={streamO}><Paint><LinearGradient start={vec(0, 0)} end={vec(width, 0)} colors={['#00000000', '#22D3EE', '#00000000']} /></Paint></Path>
+          <Path path={streamC} style="stroke" strokeWidth={2} opacity={streamO}><Paint><LinearGradient start={vec(0, 0)} end={vec(width, 0)} colors={['#00000000', '#F472B6', '#00000000']} /></Paint></Path>
+          <Path path={embers} color="#E9D5FF" style="stroke" strokeWidth={1.5} opacity={emberO} />
         </Canvas>
         <Animated.View style={[st.logoWrap, logoStyle]}>
           <Image source={require('../assets/brand/logo.png')} style={st.logo} resizeMode="contain" />

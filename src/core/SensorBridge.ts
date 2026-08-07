@@ -1,114 +1,69 @@
 import { devicePresenceEngine } from '../../engine/device/DevicePresenceEngine';
-
 export class SensorBridge {
-  private accelerometerSub: any = null;
-  private gyroscopeSub: any = null;
-  private barometerSub: any = null;
-  private lightSensorSub: any = null;
-  private pedometerSub: any = null;
-  private audioSimInterval: ReturnType<typeof setInterval> | null = null;
+  private subs: any[] = [];
+  private audioIv: ReturnType<typeof setInterval> | null = null;
+  private rec: any = null;
   private isActive = false;
-
   async start(): Promise<void> {
     if (this.isActive) return;
     this.isActive = true;
-
-    try {
-      const { Accelerometer, Gyroscope, Barometer, LightSensor, Pedometer } = await import('expo-sensors');
-
-      this.accelerometerSub = Accelerometer.addListener((data: any) => {
-        devicePresenceEngine.updateAccelerometer(data.x, data.y, data.z);
-      });
-      Accelerometer.setUpdateInterval(100);
-
-      this.gyroscopeSub = Gyroscope.addListener((data: any) => {
-        devicePresenceEngine.updateGyroscope(data.x, data.y, data.z);
-      });
-      Gyroscope.setUpdateInterval(100);
-
-      this.barometerSub = Barometer.addListener((data: any) => {
-        devicePresenceEngine.updateBarometer(data.pressure);
-      });
-      Barometer.setUpdateInterval(5000);
-
-      this.lightSensorSub = LightSensor.addListener((data: any) => {
-        devicePresenceEngine.updateLightLevel(data.illuminance);
-      });
-      LightSensor.setUpdateInterval(1000);
-
-      try {
-        const pedometerResult = await Pedometer.isAvailableAsync();
-        if (pedometerResult) {
-          const end = new Date();
-          const start = new Date();
-          start.setHours(0, 0, 0, 0);
-          const pastStepCount = await Pedometer.getStepCountAsync(start, end);
-          if (pastStepCount) {
-            devicePresenceEngine.updateStepCount(pastStepCount.steps);
-          }
-          this.pedometerSub = Pedometer.watchStepCount((data: any) => {
-            devicePresenceEngine.updateStepCount(data.steps);
-          });
-        }
-      } catch (e) {
-        console.log('[SensorBridge] Pedometer not available');
-      }
-
-      // بدء التقاط الصوت (حقيقي أو محاكاة)
-      await this.startAudioCapture();
-
-      console.log('[SensorBridge] ✅ All sensors connected');
-    } catch (e) {
-      console.warn('[SensorBridge] ⚠️ Sensors unavailable:', e);
-    }
+    this._pedometer();
+    setTimeout(() => this._motion(), 500);
+    setTimeout(() => this._env(), 1000);
+    setTimeout(() => this._audio(), 1500);
   }
-
-  private async startAudioCapture(): Promise<void> {
+  private async _pedometer(): Promise<void> {
+    try {
+      const { Pedometer } = await import('expo-sensors');
+      if (!(await Pedometer.isAvailableAsync())) return;
+      const end = new Date(); const start = new Date(); start.setHours(0, 0, 0, 0);
+      const past = await Pedometer.getStepCountAsync(start, end);
+      if (past) devicePresenceEngine.updateStepCount(past.steps);
+      this.subs.push(Pedometer.watchStepCount((d: any) => devicePresenceEngine.updateStepCount(d.steps)));
+    } catch {}
+  }
+  private async _motion(): Promise<void> {
+    try {
+      const { Accelerometer, Gyroscope } = await import('expo-sensors');
+      Accelerometer.setUpdateInterval(500);
+      this.subs.push(Accelerometer.addListener((d: any) => devicePresenceEngine.updateAccelerometer(d.x, d.y, d.z)));
+      Gyroscope.setUpdateInterval(500);
+      this.subs.push(Gyroscope.addListener((d: any) => devicePresenceEngine.updateGyroscope(d.x, d.y, d.z)));
+    } catch {}
+  }
+  private async _env(): Promise<void> {
+    try {
+      const { Barometer, LightSensor } = await import('expo-sensors');
+      Barometer.setUpdateInterval(10000);
+      this.subs.push(Barometer.addListener((d: any) => devicePresenceEngine.updateBarometer(d.pressure)));
+      LightSensor.setUpdateInterval(2000);
+      this.subs.push(LightSensor.addListener((d: any) => devicePresenceEngine.updateLightLevel(d.illuminance)));
+    } catch {}
+  }
+  private async _audio(): Promise<void> {
     try {
       const { Audio } = await import('expo-av');
-      const permission = await Audio.requestPermissionsAsync();
-      if (permission.granted) {
-        // نبدأ التسجيل لمراقبة مستوى الصوت فقط
-        const recording = new Audio.Recording();
-        await recording.prepareToRecordAsync((Audio as any).RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
-        await recording.startAsync();
-        this.audioSimInterval = setInterval(async () => {
-          try {
-            const status = await recording.getStatusAsync();
-            if (status.isRecording) {
-              // تحويل metering إلى قيمة بين 0 و 1
-              const level = Math.max(0, Math.min(1, (status.metering || -60) / 60 + 1));
-              devicePresenceEngine.updateAudioLevel(level);
-            }
-          } catch (e) {}
-        }, 500);
-        console.log('[SensorBridge] 🎤 Real audio capture started');
-        return;
-      }
-    } catch (e) {
-      console.log('[SensorBridge] Audio capture not available, falling back to simulation');
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) throw new Error('no');
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      this.rec = new Audio.Recording();
+      await this.rec.prepareToRecordAsync((Audio as any).RECORDING_OPTIONS_PRESET_LOW_QUALITY);
+      await this.rec.startAsync();
+      this.audioIv = setInterval(async () => {
+        try {
+          const st = await this.rec.getStatusAsync();
+          if (st.isRecording) devicePresenceEngine.updateAudioLevel(Math.max(0, Math.min(1, (st.metering || -60) / 60 + 1)));
+        } catch {}
+      }, 1500);
+    } catch {
+      this.audioIv = setInterval(() => devicePresenceEngine.updateAudioLevel(0.1 + Math.random() * 0.4), 2000);
     }
-    // احتياطي: محاكاة مستوى الصوت
-    this.startAudioLevelSimulation();
   }
-
-  private startAudioLevelSimulation(): void {
-    this.audioSimInterval = setInterval(() => {
-      const level = 0.1 + Math.random() * 0.4;
-      devicePresenceEngine.updateAudioLevel(level);
-    }, 1000);
-  }
-
   stop(): void {
     this.isActive = false;
-    if (this.accelerometerSub) { this.accelerometerSub.remove(); this.accelerometerSub = null; }
-    if (this.gyroscopeSub) { this.gyroscopeSub.remove(); this.gyroscopeSub = null; }
-    if (this.barometerSub) { this.barometerSub.remove(); this.barometerSub = null; }
-    if (this.lightSensorSub) { this.lightSensorSub.remove(); this.lightSensorSub = null; }
-    if (this.pedometerSub) { this.pedometerSub.remove(); this.pedometerSub = null; }
-    if (this.audioSimInterval) { clearInterval(this.audioSimInterval); this.audioSimInterval = null; }
-    console.log('[SensorBridge] All sensors disconnected');
+    this.subs.forEach(s => { try { s.remove(); } catch {} }); this.subs = [];
+    if (this.audioIv) { clearInterval(this.audioIv); this.audioIv = null; }
+    if (this.rec) { try { this.rec.stopAndUnloadAsync(); } catch {} this.rec = null; }
   }
 }
-
 export const sensorBridge = new SensorBridge();
