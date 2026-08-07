@@ -74,6 +74,18 @@ async def signup(body: SignupBody):
             ok = _upsert_profile(create_client(os.getenv("SUPABASE_URL", ""), token),
                                  user_id, body.email.strip(), body.email.split('@')[0], body.twin_name, body.lang)
         if not ok:
+            try:
+                from datetime import datetime, timezone
+                service_db.table("profiles").upsert({
+                    "id": user_id, "email": body.email.strip(),
+                    "full_name": body.email.split('@')[0],
+                    "twin_name": body.twin_name, "lang": body.lang,
+                    "tier": "free", "updated_at": datetime.now(timezone.utc).isoformat(),
+                }).execute()
+                ok = True
+            except Exception as e2:
+                logger.error(f"direct profile upsert failed: {e2}")
+        if not ok:
             raise HTTPException(500, "تعذر تجهيز ملفك الشخصي. حاول مرة أخرى.")
         try:
             lr = db.auth.sign_in_with_password({"email": body.email.strip(), "password": body.password})
