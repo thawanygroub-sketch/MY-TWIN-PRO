@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-api_router = APIRouter(prefix="/api")
+api_router = APIRouter()
 from app.api.routes import auth, chat, memories, profile
 from app.api.routes import study_routes, code_lab_routes, business_routes
 from app.api.routes import creator_routes, dream_routes, life_coach_routes
