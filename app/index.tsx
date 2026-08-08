@@ -111,9 +111,9 @@ export default function Index() {
           <Path path={membrane} color={P.edge} style="stroke" strokeWidth={1.4} opacity={edgeO} />
           <Path path={orbitA} opacity={orbitsO}><Paint style="stroke" strokeWidth={2.4} strokeCap="round"><LinearGradient start={vec(0, 0)} end={vec(width, height)} colors={[P.p1, P.p2]} /></Paint></Path>
           <Path path={orbitB} opacity={orbitsO}><Paint style="stroke" strokeWidth={2} strokeCap="round"><LinearGradient start={vec(width, 0)} end={vec(0, height)} colors={[P.p2, P.p1]} /></Paint></Path>
-          <Path path={embers} opacity={embersO}><Paint style="stroke" strokeWidth={1.6} strokeCap="round" color={P.p1} /></Paint></Path>
-          <Circle cx={eyeLX} cy={eyeY} r={haloR} opacity={eyeO}><RadialGradient c={vec(eyeLX, eyeY)} r={haloR} colors={[P.eyeHalo, '#00000000']} /></Circle>
-          <Circle cx={eyeRX} cy={eyeY} r={haloR} opacity={eyeO}><RadialGradient c={vec(eyeRX, eyeY)} r={haloR} colors={[P.eyeHalo, '#00000000']} /></Circle>
+          <Path path={embers} opacity={embersO}><Paint style="stroke" strokeWidth={1.6} strokeCap="round" color={P.p1}></Paint></Path>
+          <Circle cx={eyeLX} cy={eyeY} r={haloR} opacity={eyeO}><RadialGradient c={vec(CX - 15, CY - 6)} r={haloR} colors={[P.eyeHalo, '#00000000']} /></Circle>
+          <Circle cx={eyeRX} cy={eyeY} r={haloR} opacity={eyeO}><RadialGradient c={vec(CX + 15, CY - 6)} r={haloR} colors={[P.eyeHalo, '#00000000']} /></Circle>
           <Circle cx={eyeLX} cy={eyeY} r={coreR} color={P.eyeCore} opacity={eyeO} />
           <Circle cx={eyeRX} cy={eyeY} r={coreR} color={P.eyeCore} opacity={eyeO} />
           <Circle cx={eyeLX} cy={eyeY} r={1.1} color="#FFFFFF" opacity={eyeO} />
