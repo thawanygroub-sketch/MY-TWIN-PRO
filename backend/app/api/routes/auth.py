@@ -99,6 +99,20 @@ async def signup(body: SignupBody):
             except Exception as e2:
                 logger.error(f"direct profile upsert failed: {e2}")
         if not ok:
+            try:
+                lr3 = db.auth.sign_in_with_password({"email": body.email.strip(), "password": body.password})
+                if lr3.session:
+                    from supabase import create_client
+                    import os
+                    u3 = create_client(os.getenv("SUPABASE_URL", ""), lr3.session.access_token)
+                    ok = _upsert_profile(u3, user_id, body.email.strip(),
+                                         body.email.split('@')[0], body.twin_name, body.lang)
+                    if ok:
+                        token = lr3.session.access_token
+                        user_id = lr3.user.id if lr3.user else user_id
+            except Exception as e3:
+                logger.error(f"self-upsert fallback failed: {e3}")
+        if not ok:
             raise HTTPException(500, "تعذر تجهيز ملفك الشخصي. حاول مرة أخرى.")
         try:
             lr = db.auth.sign_in_with_password({"email": body.email.strip(), "password": body.password})
