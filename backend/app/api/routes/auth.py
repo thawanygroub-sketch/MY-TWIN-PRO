@@ -103,7 +103,10 @@ async def signup(body: SignupBody):
         try:
             lr = db.auth.sign_in_with_password({"email": body.email.strip(), "password": body.password})
             if lr.session:
-                await _wake_up_twin(user_id, body.lang)
+                try:
+                    await _wake_up_twin(user_id, body.lang)
+                except Exception as we:
+                    logger.error(f"wake_up failed (non-blocking): {we}")
                 return {"token": lr.session.access_token, "user_id": user_id, "onboarded": False}
         except Exception:
             pass
