@@ -86,6 +86,19 @@ async def signup(body: SignupBody):
             except Exception as e2:
                 logger.error(f"direct profile upsert failed: {e2}")
         if not ok:
+            try:
+                from app.infrastructure.database.supabase_client import get_db
+                from datetime import datetime, timezone
+                get_db().table("profiles").upsert({
+                    "id": user_id, "email": body.email.strip(),
+                    "full_name": body.email.split('@')[0],
+                    "twin_name": body.twin_name, "lang": body.lang,
+                    "tier": "free", "updated_at": datetime.now(timezone.utc).isoformat(),
+                }).execute()
+                ok = True
+            except Exception as e2:
+                logger.error(f"direct profile upsert failed: {e2}")
+        if not ok:
             raise HTTPException(500, "تعذر تجهيز ملفك الشخصي. حاول مرة أخرى.")
         try:
             lr = db.auth.sign_in_with_password({"email": body.email.strip(), "password": body.password})
@@ -103,7 +116,26 @@ async def signup(body: SignupBody):
     except Exception as e:
         msg = str(e).lower()
         if "already registered" in msg or "exists" in msg:
-            raise HTTPException(409, "هذا البريد مسجل بالفعل. حاول تسجيل الدخول.")
+            try:
+                lr2 = db.auth.sign_in_with_password({"email": body.email.strip(), "password": body.password})
+                uid2 = lr2.user.id if lr2.user else None
+                if uid2:
+                    try:
+                        from app.infrastructure.database.supabase_client import get_db
+                        from datetime import datetime, timezone
+                        get_db().table("profiles").upsert({
+                            "id": uid2, "email": body.email.strip(),
+                            "full_name": body.email.split('@')[0],
+                            "twin_name": body.twin_name, "lang": body.lang,
+                            "tier": "free", "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }).execute()
+                    except Exception:
+                        pass
+                    if lr2.session:
+                        return {"token": lr2.session.access_token, "user_id": uid2, "onboarded": False}
+            except Exception:
+                pass
+            raise HTTPException(409, "هذا البريد مسجل بالفعل. استخدم تسجيل الدخول.")
         logger.error(f"signup error: {e}")
         raise HTTPException(400, "تعذر إنشاء الحساب. حاول مرة أخرى.")
 
