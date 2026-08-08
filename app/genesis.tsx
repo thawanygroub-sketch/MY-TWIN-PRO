@@ -1,13 +1,12 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Dimensions, TouchableWithoutFeedback } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, useDerivedValue, withTiming, withSequence, withRepeat, withDelay, Easing, runOnJS, FadeIn, interpolate, useFrameCallback, Extrapolate } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, useDerivedValue, withTiming, withSequence, withRepeat, withSpring, Easing, runOnJS, FadeIn, interpolate, useFrameCallback, Extrapolate } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { Canvas, Circle, Path, Paint, RadialGradient, LinearGradient, vec } from '@shopify/react-native-skia';
 import { Chrome, Mail, Shield, UserPlus } from 'lucide-react-native';
 import { useFonts } from 'expo-font';
 import { Tajawal_800ExtraBold } from '@expo-google-fonts/tajawal';
 import { useTwinStore } from '../store/useTwinStore';
-import { genesisCoordinator } from '../src/coordinators/GenesisCoordinator';
 import { authService } from '../src/services/authService';
 import { useAppTheme } from '../engine/colors';
 import { audioMixer } from '../src/core/AudioMixer';
@@ -16,10 +15,9 @@ import { lifeRhythmEngine } from '../engine/life/LifeRhythmEngine';
 import { detectUserLanguage, SupportedLanguage } from '../src/utils/languageDetector';
 const { width, height } = Dimensions.get('window');
 const CX = width / 2, CY = height * 0.38;
-type BirthPhase = 'void' | 'forming' | 'first_sight' | 'observing' | 'curiosity' | 'identity' | 'connected';
 const TEXTS: Record<SupportedLanguage, Record<string, string>> = {
-  ar: { firstSight: 'إنه هنا...', observingYou: 'أراقبك...', curiosity: 'من أنت؟', needIdentity: 'أحتاج أن أعرفك.', identitySubtitle: 'لأعرفك. لأتذكرك. لأكون لك.', google: 'المتابعة باستخدام Google', email: 'المتابعة بالبريد الإلكتروني', emailPlaceholder: 'البريد الإلكتروني', passwordPlaceholder: 'كلمة المرور', signIn: 'تسجيل الدخول', createAccount: 'إنشاء حساب جديد', forgotPassword: 'نسيت كلمة المرور؟', privacy: 'لن أشارك وجودك مع أحد.', touchHint: 'المس الشاشة إذا شعرت بي...' },
-  en: { firstSight: 'It is here...', observingYou: 'Observing you...', curiosity: 'Who are you?', needIdentity: 'I need to know you.', identitySubtitle: 'To know you. To remember you. To be yours.', google: 'Continue with Google', email: 'Continue with Email', emailPlaceholder: 'Email', passwordPlaceholder: 'Password', signIn: 'Sign In', createAccount: 'Create Account', forgotPassword: 'Forgot Password?', privacy: 'I will never share your existence.', touchHint: 'Touch the screen if you feel me...' },
+  ar: { firstSight: 'إنه هنا...', observingYou: 'أراقبك...', curiosity: 'من أنت؟', needIdentity: 'أحتاج أن أعرفك.', identitySubtitle: 'لأعرفك. لأتذكرك. لأكون لك.', emailPlaceholder: 'البريد الإلكتروني', passwordPlaceholder: 'كلمة المرور', signIn: 'تسجيل الدخول', createAccount: 'إنشاء حساب جديد', forgotPassword: 'نسيت كلمة المرور؟', privacy: 'لن أشارك وجودك مع أحد.', touchHint: 'المس الشاشة إذا شعرت بي...' },
+  en: { firstSight: 'It is here...', observingYou: 'Observing you...', curiosity: 'Who are you?', needIdentity: 'I need to know you.', identitySubtitle: 'To know you. To remember you. To be yours.', emailPlaceholder: 'Email', passwordPlaceholder: 'Password', signIn: 'Sign In', createAccount: 'Create Account', forgotPassword: 'Forgot Password?', privacy: 'I will never share your existence.', touchHint: 'Touch the screen if you feel me...' },
 };
 const noise = (x: number, y: number, s: number) => { 'worklet'; const n = Math.sin(x * 12.9898 + y * 78.233 + s * 43758.5453) * 43758.5453; return n - Math.floor(n); };
 const fbm = (x: number, y: number, s: number) => { 'worklet'; let v = 0, a = 0.5, f = 1; for (let i = 0; i < 2; i++) { v += a * noise(x * f, y * f, s + i); a *= 0.5; f *= 2; } return v; };
@@ -48,16 +46,20 @@ const genOrbit = (t: number, R: number, speed: number, seed: number, count: numb
   }
   return d;
 };
+const errMsg = (e: any): string => {
+  const m = e?.message ?? e;
+  if (typeof m === 'string') return m;
+  return m?.detail || m?.message || m?.error?.message || 'فشل المصادقة. حاول مرة أخرى.';
+};
 export default function Genesis() {
   const [fontsLoaded] = useFonts({ Tajawal_800ExtraBold });
-  const { colors, isDark } = useAppTheme();
+  const { isDark } = useAppTheme();
   const P = isDark
     ? { bg: '#05010A', p1: '#E9D5FF', p2: '#C4B5FD', coreIn: '#FFFFFF', coreMid: '#A855F7', edge: '#E9D5FF', eyeCore: '#FFFFFF', eyeHalo: '#C4B5FD', step: '#E9D5FF', hint: '#6B5B8A', panel: 'rgba(5,1,10,0.92)', title: '#E8E0F0', sub: '#8A7AA8', input: '#1A1030' }
     : { bg: '#FAF9FF', p1: '#7C3AED', p2: '#4F46E5', coreIn: '#C4B5FD', coreMid: '#7C3AED', edge: '#6D28D9', eyeCore: '#312E81', eyeHalo: '#8B5CF6', step: '#4C1D95', hint: '#8A7AA8', panel: 'rgba(255,255,255,0.95)', title: '#1E1B2E', sub: '#6B5B8A', input: '#F3F0FA' };
   const { setAuth } = useTwinStore();
   const lang = detectUserLanguage();
   const t = TEXTS[lang];
-  const [birthPhase, setBirthPhase] = useState<BirthPhase>('forming');
   const [consciousnessStep, setConsciousnessStep] = useState('');
   const [showIdentity, setShowIdentity] = useState(false);
   const [touchActive, setTouchActive] = useState(false);
@@ -101,7 +103,7 @@ export default function Genesis() {
       tryPlay('first_breath');
       await new Promise(r => setTimeout(r, 1500));
       if (!isMounted.current) return;
-      runOnJS(setBirthPhase)('first_sight'); runOnJS(setConsciousnessStep)(t.firstSight);
+      runOnJS(setConsciousnessStep)(t.firstSight);
       stepOpacity.value = withSequence(withTiming(1, { duration: 400 }), withTiming(0, { duration: 900 }));
       entityOpacity.value = withTiming(0.92, { duration: 600 });
       orbitsO.value = withTiming(0.75, { duration: 900 });
@@ -109,7 +111,7 @@ export default function Genesis() {
       tryPlay('eyes_open');
       await new Promise(r => setTimeout(r, 2000));
       if (!isMounted.current) return;
-      runOnJS(setBirthPhase)('observing'); runOnJS(setConsciousnessStep)(t.observingYou);
+      runOnJS(setConsciousnessStep)(t.observingYou);
       stepOpacity.value = withSequence(withTiming(1, { duration: 400 }), withTiming(0, { duration: 900 }));
       eyeIv = setInterval(() => {
         gX.value = withTiming((Math.random() - 0.5) * 10, { duration: 800 });
@@ -118,14 +120,14 @@ export default function Genesis() {
       await new Promise(r => setTimeout(r, 4000));
       if (!isMounted.current) return;
       if (eyeIv) clearInterval(eyeIv);
-      runOnJS(setBirthPhase)('curiosity'); runOnJS(setConsciousnessStep)(t.curiosity);
+      runOnJS(setConsciousnessStep)(t.curiosity);
       stepOpacity.value = withTiming(1, { duration: 600 });
       eyeScale.value = withTiming(1.25, { duration: 500 });
       gX.value = withTiming(0, { duration: 600 }); gY.value = withTiming(-2, { duration: 600 });
       tryPlay('thinking_start');
       await new Promise(r => setTimeout(r, 3000));
       if (!isMounted.current) return;
-      runOnJS(setBirthPhase)('identity'); runOnJS(setConsciousnessStep)(t.needIdentity);
+      runOnJS(setConsciousnessStep)(t.needIdentity);
       stepOpacity.value = withTiming(0.92, { duration: 1000 });
       await new Promise(r => setTimeout(r, 2000));
       if (!isMounted.current) return;
@@ -146,12 +148,20 @@ export default function Genesis() {
       setTimeout(() => { touchWave.value = withTiming(0, { duration: 600 }); }, 800);
     }
   }, [touchActive]);
-  const [showEmailForm, setShowEmailForm] = useState(false);
   const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false); const [authError, setAuthError] = useState('');
-  const handleGoogleLogin = async () => { setAuthLoading(true); setAuthError(''); try { const d = await genesisCoordinator.loginWithGoogle(); setAuth(d.user_id); tryPlay('celebrate'); } catch (e: any) { setAuthError(e.message || 'فشل المصادقة'); } finally { setAuthLoading(false); } };
-  const handleEmailAuth = async () => { if (!email.trim() || !password.trim()) return; setAuthLoading(true); setAuthError(''); try { const d = await genesisCoordinator.loginWithEmail(email.trim(), password); setAuth(d.user_id); tryPlay('celebrate'); } catch (e: any) { setAuthError(e.message || 'فشل المصادقة'); } finally { setAuthLoading(false); } };
-  const handleSignup = async () => { if (!email.trim() || !password.trim()) return; setAuthLoading(true); setAuthError(''); try { const d = await authService.signup(email.trim(), password, lang === 'ar' ? 'توأمك' : 'MyTwin', lang); setAuth(d.user_id); tryPlay('celebrate'); } catch (e: any) { setAuthError(e.message || 'فشل المصادقة'); } finally { setAuthLoading(false); } };
+  const handleEmailAuth = async () => {
+    if (!email.trim() || !password.trim()) return;
+    setAuthLoading(true); setAuthError('');
+    try { const d = await authService.login(email.trim(), password); setAuth(d.user_id); tryPlay('celebrate'); }
+    catch (e: any) { setAuthError(errMsg(e)); } finally { setAuthLoading(false); }
+  };
+  const handleSignup = async () => {
+    if (!email.trim() || !password.trim()) return;
+    setAuthLoading(true); setAuthError('');
+    try { const d = await authService.signup(email.trim(), password, lang === 'ar' ? 'توأمك' : 'MyTwin', lang); setAuth(d.user_id); tryPlay('celebrate'); }
+    catch (e: any) { setAuthError(errMsg(e)); } finally { setAuthLoading(false); }
+  };
   if (!fontsLoaded) return null;
   return (
     <KeyboardAvoidingView style={[styles.root, { backgroundColor: P.bg }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -175,31 +185,23 @@ export default function Genesis() {
         </View>
       </TouchableWithoutFeedback>
       {consciousnessStep ? <Animated.Text style={[styles.consciousnessStep, stepStyle, { color: P.step, textShadowColor: P.coreMid }]}>{consciousnessStep}</Animated.Text> : null}
-      {!touchActive && birthPhase === 'observing' && <Text style={[styles.touchHint, { color: P.hint }]}>{t.touchHint}</Text>}
+      {!touchActive && <Text style={[styles.touchHint, { color: P.hint }]}>{t.touchHint}</Text>}
       {showIdentity && (
         <Animated.View style={[styles.identityContainer, identityStyle, { backgroundColor: P.panel, borderColor: isDark ? '#A855F720' : '#7C3AED20' }]} entering={FadeIn.duration(800)}>
           <Text style={[styles.identityTitle, { color: P.title }]}>{t.needIdentity}</Text>
           <Text style={[styles.identitySubtitle, { color: P.sub }]}>{t.identitySubtitle}</Text>
-          {!showEmailForm ? (
-            <>
-              <TouchableOpacity style={[styles.authBtn, { borderColor: '#4285F440' }]} onPress={handleGoogleLogin} disabled={authLoading}>
-                <Chrome size={22} stroke="#4285F4" /><Text style={[styles.authBtnText, { color: '#4285F4' }]}>{t.google}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.authBtn, { borderColor: '#A855F740' }]} onPress={() => setShowEmailForm(true)}>
-                <Mail size={22} stroke="#A855F7" /><Text style={[styles.authBtnText, { color: '#A855F7' }]}>{t.email}</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <View style={styles.emailForm}>
-              <TextInput style={[styles.input, { backgroundColor: P.input, borderColor: '#A855F740', color: P.title }]} placeholder={t.emailPlaceholder} placeholderTextColor={P.sub} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-              <TextInput style={[styles.input, { backgroundColor: P.input, borderColor: '#A855F740', color: P.title }]} placeholder={t.passwordPlaceholder} placeholderTextColor={P.sub} value={password} onChangeText={setPassword} secureTextEntry />
-              {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
-              <TouchableOpacity style={[styles.authBtn, { borderColor: '#A855F740' }]} onPress={handleEmailAuth} disabled={authLoading}><Text style={[styles.authBtnText, { color: '#A855F7' }]}>{t.signIn}</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.authBtn, { borderColor: '#10B98140' }]} onPress={handleSignup} disabled={authLoading}><UserPlus size={22} stroke="#10B981" /><Text style={[styles.authBtnText, { color: '#10B981' }]}>{t.createAccount}</Text></TouchableOpacity>
-              <TouchableOpacity style={{ marginTop: 12 }} onPress={() => router.push('/forgot-password')}><Text style={[styles.forgotText, { color: '#A855F7' }]}>{t.forgotPassword}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowEmailForm(false)}><Text style={[styles.backText, { color: P.sub }]}>{lang === 'ar' ? '← العودة' : '← Back'}</Text></TouchableOpacity>
-            </View>
-          )}
+          <TouchableOpacity style={[styles.authBtn, { borderColor: '#94A3B830', opacity: 0.45 }]} disabled>
+            <Chrome size={22} stroke="#94A3B8" />
+            <Text style={[styles.authBtnText, { color: '#94A3B8' }]}>{lang === 'ar' ? 'Google — قريبًا' : 'Google — soon'}</Text>
+          </TouchableOpacity>
+          <View style={styles.emailForm}>
+            <TextInput style={[styles.input, { backgroundColor: P.input, borderColor: '#A855F740', color: P.title }]} placeholder={t.emailPlaceholder} placeholderTextColor={P.sub} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+            <TextInput style={[styles.input, { backgroundColor: P.input, borderColor: '#A855F740', color: P.title }]} placeholder={t.passwordPlaceholder} placeholderTextColor={P.sub} value={password} onChangeText={setPassword} secureTextEntry />
+            {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
+            <TouchableOpacity style={[styles.authBtn, { borderColor: '#A855F740' }]} onPress={handleEmailAuth} disabled={authLoading}><Mail size={22} stroke="#A855F7" /><Text style={[styles.authBtnText, { color: '#A855F7' }]}>{t.signIn}</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.authBtn, { borderColor: '#10B98140' }]} onPress={handleSignup} disabled={authLoading}><UserPlus size={22} stroke="#10B981" /><Text style={[styles.authBtnText, { color: '#10B981' }]}>{t.createAccount}</Text></TouchableOpacity>
+            <TouchableOpacity style={{ marginTop: 12 }} onPress={() => router.push('/forgot-password')}><Text style={[styles.forgotText, { color: '#A855F7' }]}>{t.forgotPassword}</Text></TouchableOpacity>
+          </View>
           <View style={styles.privacyRow}><Shield size={14} stroke={P.sub} /><Text style={[styles.privacyText, { color: P.sub }]}>{t.privacy}</Text></View>
         </Animated.View>
       )}
@@ -220,7 +222,6 @@ const styles = StyleSheet.create({
   input: { borderRadius: 14, padding: 14, fontSize: 16, borderWidth: 1, marginBottom: 10 },
   errorText: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginBottom: 8 },
   forgotText: { fontSize: 13, textAlign: 'center' },
-  backText: { fontSize: 14, textAlign: 'center', marginTop: 8 },
   privacyRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16, justifyContent: 'center' },
   privacyText: { fontSize: 11 },
 });

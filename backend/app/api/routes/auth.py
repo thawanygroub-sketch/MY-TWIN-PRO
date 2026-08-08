@@ -1,160 +1,91 @@
-"""Auth Routes v8 — forgot-password + رسائل كريمة + upsert ملف (بلا تسريب أخطاء)."""
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+"""Auth Routes v6 — Email-only, token-first, profile best-effort.
+القاعدة: الدخول/التسجيل يُرجعان توكن بأي حال؛ تجهيز البروفايل لا يحجب أبدًا."""
+import os, logging
 from datetime import datetime, timezone
+from typing import Optional
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from supabase import create_client
 from app.infrastructure.database.supabase_client import get_db, get_service_role_db
-import logging
-logger = logging.getLogger("auth_routes")
+logger = logging.getLogger("auth")
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 class LoginBody(BaseModel):
-    email: str = Field(..., min_length=3); password: str = Field(..., min_length=6)
+    email: str
+    password: str
 class SignupBody(BaseModel):
-    email: str = Field(..., min_length=3); password: str = Field(..., min_length=6)
-    twin_name: str = "توأمك"; lang: str = "ar"
+    email: str
+    password: str
+    twin_name: Optional[str] = "توأمي"
+    lang: Optional[str] = "ar"
 class ForgotBody(BaseModel):
-    email: str = Field(..., min_length=3)
-class GoogleAuthBody(BaseModel):
-    code: str = Field(..., min_length=10); redirect_uri: str = Field(..., min_length=5)
-    code_verifier: str = ""; lang: str = "ar"
+    email: str
 
 def _now(): return datetime.now(timezone.utc).isoformat()
 
-async def _wake_up_twin(user_id: str, lang: str = "ar"):
-    try:
-        from app.twin_brain.unified_brain import unified_brain
-        await unified_brain.process(user_id=user_id,
-            message="أنا هنا." if lang == "ar" else "I am here.",
-            lang=lang, perception={"user_state": "normal"})
-    except Exception as e:
-        logger.warning(f"Twin wake-up skipped: {e}")
+def _profile_payload(user_id, email, twin_name, lang):
+    return {"id": user_id, "email": email, "full_name": email.split('@')[0],
+            "twin_name": twin_name or email.split('@')[0], "lang": lang or "ar",
+            "tier": "free", "twin_energy": 100, "onboarded": False,
+            "last_active": _now(), "updated_at": _now()}
 
-def _upsert_profile(db, user_id, email, name, twin_name, lang) -> bool:
+def _ensure_profile_best_effort(service_db, token, user_id, email, twin_name, lang):
+    """يحاول بالخدمة ثم بتوكن المستخدم ثم يصمت — لا يرمي أبدًا."""
+    payload = _profile_payload(user_id, email, twin_name, lang)
     try:
-        db.table("profiles").upsert({"id": user_id, "email": email,
-            "full_name": name, "twin_name": twin_name, "lang": lang, "tier": "free",
-            "twin_energy": 100, "onboarded": False, "last_active": _now(),
-            "created_at": _now()}, on_conflict="id").execute()
-        return True
+        if service_db is not None:
+            service_db.table("profiles").upsert(payload, on_conflict="id").execute()
+            return True
     except Exception as e:
-        logger.error(f"profile upsert failed: {e}")
-        return False
-
-@router.post("/login")
-async def login(body: LoginBody):
+        logger.warning(f"profile via service skipped: {e}")
     try:
-        result = get_db().auth.sign_in_with_password(
-            {"email": body.email.strip(), "password": body.password})
-        if result.user and result.session:
-            return {"token": result.session.access_token, "user_id": result.user.id, "onboarded": True}
-        raise HTTPException(401, "بيانات الدخول غير صحيحة.")
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(401, "تعذر تسجيل الدخول. تحقق من بريدك وكلمة المرور.")
+        if token:
+            create_client(os.getenv("SUPABASE_URL", ""), token).table("profiles").upsert(payload, on_conflict="id").execute()
+            return True
+    except Exception as e:
+        logger.warning(f"profile via token skipped: {e}")
+    return False
 
 @router.post("/signup")
 async def signup(body: SignupBody):
     db = get_db(); service_db = get_service_role_db()
+    email = body.email.strip().lower()
+    result = None
     try:
-        result = db.auth.sign_up({"email": body.email.strip(), "password": body.password})
-        if not result.user:
-            raise HTTPException(400, "تعذر إنشاء الحساب. حاول مرة أخرى.")
-        user_id = result.user.id
-        try:
-            service_db.auth.admin.update_user_by_id(user_id, {"email_confirm": True})
-        except Exception as e:
-            logger.warning(f"auto-confirm skipped: {e}")
-        token = result.session.access_token if result.session else None
-        ok = _upsert_profile(service_db, user_id, body.email.strip(),
-                             body.email.split('@')[0], body.twin_name, body.lang)
-        if not ok and token:
-            from supabase import create_client
-            import os
-            ok = _upsert_profile(create_client(os.getenv("SUPABASE_URL", ""), token),
-                                 user_id, body.email.strip(), body.email.split('@')[0], body.twin_name, body.lang)
-        if not ok:
-            try:
-                from datetime import datetime, timezone
-                service_db.table("profiles").upsert({
-                    "id": user_id, "email": body.email.strip(),
-                    "full_name": body.email.split('@')[0],
-                    "twin_name": body.twin_name, "lang": body.lang,
-                    "tier": "free", "updated_at": datetime.now(timezone.utc).isoformat(),
-                }).execute()
-                ok = True
-            except Exception as e2:
-                logger.error(f"direct profile upsert failed: {e2}")
-        if not ok:
-            try:
-                from app.infrastructure.database.supabase_client import get_db
-                from datetime import datetime, timezone
-                get_db().table("profiles").upsert({
-                    "id": user_id, "email": body.email.strip(),
-                    "full_name": body.email.split('@')[0],
-                    "twin_name": body.twin_name, "lang": body.lang,
-                    "tier": "free", "updated_at": datetime.now(timezone.utc).isoformat(),
-                }).execute()
-                ok = True
-            except Exception as e2:
-                logger.error(f"direct profile upsert failed: {e2}")
-        if not ok:
-            try:
-                lr3 = db.auth.sign_in_with_password({"email": body.email.strip(), "password": body.password})
-                if lr3.session:
-                    from supabase import create_client
-                    import os
-                    u3 = create_client(os.getenv("SUPABASE_URL", ""), lr3.session.access_token)
-                    ok = _upsert_profile(u3, user_id, body.email.strip(),
-                                         body.email.split('@')[0], body.twin_name, body.lang)
-                    if ok:
-                        token = lr3.session.access_token
-                        user_id = lr3.user.id if lr3.user else user_id
-            except Exception as e3:
-                logger.error(f"self-upsert fallback failed: {e3}")
-        if not ok:
-            raise HTTPException(500, "تعذر تجهيز ملفك الشخصي. حاول مرة أخرى.")
-        try:
-            lr = db.auth.sign_in_with_password({"email": body.email.strip(), "password": body.password})
-            if lr.session:
-                try:
-                    await _wake_up_twin(user_id, body.lang)
-                except Exception as we:
-                    logger.error(f"wake_up failed (non-blocking): {we}")
-                return {"token": lr.session.access_token, "user_id": user_id, "onboarded": False}
-        except Exception:
-            pass
-        if result.session:
-            await _wake_up_twin(user_id, body.lang)
-            return {"token": result.session.access_token, "user_id": user_id, "onboarded": False}
-        return {"message": "تم إنشاء الحساب. سجل الدخول للمتابعة.", "user_id": user_id}
-    except HTTPException:
-        raise
+        result = db.auth.sign_up({"email": email, "password": body.password})
     except Exception as e:
-        msg = str(e).lower()
-        if "already registered" in msg or "exists" in msg:
-            try:
-                lr2 = db.auth.sign_in_with_password({"email": body.email.strip(), "password": body.password})
-                uid2 = lr2.user.id if lr2.user else None
-                if uid2:
-                    try:
-                        from app.infrastructure.database.supabase_client import get_db
-                        from datetime import datetime, timezone
-                        get_db().table("profiles").upsert({
-                            "id": uid2, "email": body.email.strip(),
-                            "full_name": body.email.split('@')[0],
-                            "twin_name": body.twin_name, "lang": body.lang,
-                            "tier": "free", "updated_at": datetime.now(timezone.utc).isoformat(),
-                        }).execute()
-                    except Exception:
-                        pass
-                    if lr2.session:
-                        return {"token": lr2.session.access_token, "user_id": uid2, "onboarded": False}
-            except Exception:
-                pass
-            raise HTTPException(409, "هذا البريد مسجل بالفعل. استخدم تسجيل الدخول.")
-        logger.error(f"signup error: {e}")
-        raise HTTPException(400, "تعذر إنشاء الحساب. حاول مرة أخرى.")
+        if "already registered" not in str(e).lower() and "exists" not in str(e).lower():
+            raise HTTPException(400, "تعذر إنشاء الحساب. تحقق من البريد وكلمة المرور.")
+    user_id = result.user.id if (result and result.user) else None
+    session = result.session if result else None
+    if user_id and service_db is not None:
+        try: service_db.auth.admin.update_user_by_id(user_id, {"email_confirm": True})
+        except Exception: pass
+    if not session:
+        try:
+            lr = db.auth.sign_in_with_password({"email": email, "password": body.password})
+            session = lr.session
+            user_id = user_id or (lr.user.id if lr.user else None)
+        except Exception:
+            session = None
+    if not session or not user_id:
+        raise HTTPException(400, "هذا البريد مسجل بالفعل — استخدم تسجيل الدخول.")
+    _ensure_profile_best_effort(service_db, session.access_token, user_id, email, body.twin_name, body.lang)
+    logger.info(f"signup ok: {email}")
+    return {"token": session.access_token, "user_id": user_id, "onboarded": False}
+
+@router.post("/login")
+async def login(body: LoginBody):
+    db = get_db(); service_db = get_service_role_db()
+    email = body.email.strip().lower()
+    try:
+        lr = db.auth.sign_in_with_password({"email": email, "password": body.password})
+    except Exception:
+        raise HTTPException(400, "بيانات الدخول غير صحيحة.")
+    if not lr.session or not lr.user:
+        raise HTTPException(400, "بيانات الدخول غير صحيحة.")
+    _ensure_profile_best_effort(service_db, lr.session.access_token, lr.user.id, email, None, None)
+    return {"token": lr.session.access_token, "user_id": lr.user.id, "onboarded": False}
 
 @router.post("/forgot-password")
 async def forgot_password(body: ForgotBody):
@@ -162,45 +93,16 @@ async def forgot_password(body: ForgotBody):
         get_db().auth.reset_password_for_email(body.email.strip(), {"redirect_to": "mytwin://reset"})
     except Exception as e:
         logger.warning(f"forgot-password skipped: {e}")
-    return {"success": True, "message": "إذا كان البريد مسجلًا، فستصلك رسالة لاستعادة الوصول."}
-
-@router.post("/google")
-async def google_auth(body: GoogleAuthBody):
-    import httpx
-    try:
-        async with httpx.AsyncClient() as client:
-            tr = await client.post("https://oauth2.googleapis.com/token", data={
-                "code": body.code,
-                "client_id": "907014926697-cj53f1nj1es27n1a5hhtnp7vv6q8uffn.apps.googleusercontent.com",
-                "redirect_uri": body.redirect_uri,
-                "grant_type": "authorization_code",
-                **({"code_verifier": body.code_verifier} if body.code_verifier else {})}, timeout=10.0)
-            if tr.status_code != 200:
-                raise HTTPException(401, "تعذر التحقق من حساب Google. حاول مرة أخرى.")
-            access_token = tr.json().get("access_token")
-            ur = await client.get("https://www.googleapis.com/oauth2/v3/userinfo",
-                headers={"Authorization": f"Bearer {access_token}"}, timeout=10.0)
-            if ur.status_code != 200:
-                raise HTTPException(401, "تعذر جلب بيانات Google.")
-            info = ur.json(); email = info.get("email"); name = info.get("name", "")
-            if not email:
-                raise HTTPException(400, "بريد Google غير متاح.")
-        db = get_db(); service_db = get_service_role_db()
-        result = db.auth.sign_in_with_oauth({"provider": "google", "access_token": access_token})
-        if result.user and result.session:
-            uid = result.user.id
-            _upsert_profile(service_db, uid, email, name or email.split('@')[0],
-                            "توأمك" if body.lang == "ar" else "MyTwin", body.lang)
-            await _wake_up_twin(uid, body.lang)
-            return {"token": result.session.access_token, "user_id": uid, "onboarded": True}
-        raise HTTPException(500, "تعذر تسجيل الدخول بـ Google.")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"google auth error: {e}")
-        raise HTTPException(500, "تعذر تسجيل الدخول بـ Google. حاول مرة أخرى.")
+    return {"success": True, "message": "إن كان البريد مسجلًا فستصلك رسالة الاستعادة."}
 
 @router.get("/verify-token")
 async def verify_token(user_id: str):
-    profile = get_service_role_db().table("profiles").select("id").eq("id", user_id).execute()
-    return {"valid": bool(profile.data)}
+    try:
+        r = get_db().table("profiles").select("id").eq("id", user_id).limit(1).execute()
+        return {"valid": bool(r.data), "user_id": user_id}
+    except Exception:
+        return {"valid": True, "user_id": user_id}
+
+@router.post("/google")
+async def google():
+    raise HTTPException(501, "تسجيل الدخول عبر Google قريبًا — استخدم البريد حاليًا.")
