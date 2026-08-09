@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Dimensions } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSequence, runOnJS, FadeIn, interpolate, Extrapolate } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, useDerivedValue, withTiming, withSequence, runOnJS, FadeIn, interpolate, Extrapolate } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { Chrome, Mail, Shield, UserPlus } from 'lucide-react-native';
 import { useFonts } from 'expo-font';

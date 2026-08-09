@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
-import { useTwinBrain } from '../src/hooks/useTwinBrain';
+import { apiPost } from '../src/lib/httpClient';
 import { useRTL } from '../lib/useRTL';
 import { useAppTheme } from '../engine/colors';
 import { useTwinStore } from '../store/useTwinStore';
@@ -23,7 +23,7 @@ const WINGS = [
   { key: 'dreams', label: 'الأحلام', Icon: Moon },
 ];
 const mapEmotion = (r: any): EntityEmotion => {
-  const em = String(r?.twin_emotional_state?.current_emotion || '').toLowerCase();
+  const em = String(r?.twin_emotional_state?.current_emotion || r?.emotion || r?.tone || '').toLowerCase();
   if ((r?.expression_intent?.smile || 0) > 0.4) return 'love';
   if (em.includes('joy') || em.includes('excit')) return 'joy';
   if (em.includes('concern') || em.includes('sad')) return 'concern';
@@ -34,7 +34,7 @@ const mapEmotion = (r: any): EntityEmotion => {
 export default function LivingWorld() {
   const userId = useTwinStore(s => s.userId) || '';
   const { colors } = useAppTheme();
-  const { isThinking, sendMessage, setUserId } = useTwinBrain();
+  const [isThinking, setIsThinking] = useState(false);
   const rtl = useRTL();
   const lang = rtl.isRTL ? 'ar' : 'en';
   const [inputText, setInputText] = useState('');
@@ -48,7 +48,6 @@ export default function LivingWorld() {
   const light = useCallback((w: string, ms = 2600) => { setWing(w); if (wingT.current) clearTimeout(wingT.current); wingT.current = setTimeout(() => setWing(null), ms); }, []);
   useEffect(() => {
     if (userId) {
-      setUserId(userId);
       bootstrapCoordinator.bootstrap().catch(() => {});
       try { voiceEngine.start(); } catch {}
       light('perception', 3000);
@@ -67,8 +66,9 @@ export default function LivingWorld() {
     setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'twin', text: '' }]);
     EventBus.emit('USER_SEND_MESSAGE', {});
     setEmotion('thinking'); light('intuition');
+    setIsThinking(true);
     try {
-      const response: any = await sendMessage(text);
+      const response: any = await apiPost('/api/chat', { message: text, user_id: userId });
       const silence = Number(response?.silence_ms || 0);
       if (silence > 0) await new Promise(r => setTimeout(r, Math.min(silence, 3500)));
       if (response) stateBus.updateFromUnifiedResponse(response);
@@ -81,8 +81,10 @@ export default function LivingWorld() {
       setOnline(false);
       feel('concern');
       setMessages(prev => { const u = [...prev]; u[u.length - 1] = { ...u[u.length - 1], text: NET[lang as 'ar'] }; return u; });
+    } finally {
+      setIsThinking(false);
     }
-  }, [inputText, isThinking, sendMessage, feel, light, lang]);
+  }, [inputText, isThinking, userId, feel, light, lang]);
   const toggleListening = async () => {
     if (isListening) { voiceEngine.stopListening(); setIsListening(false); }
     else { try { await voiceEngine.startListening(); setIsListening(true); } catch {} }

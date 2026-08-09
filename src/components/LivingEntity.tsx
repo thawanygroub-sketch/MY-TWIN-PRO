@@ -1,10 +1,9 @@
 import React, { useEffect } from 'react';
 import { Dimensions } from 'react-native';
-import { Canvas, Circle, Group, RadialGradient, vec, Path } from '@shopify/react-native-skia';
+import { Canvas, Circle, RadialGradient, vec, Path } from '@shopify/react-native-skia';
 import { useSharedValue, useDerivedValue, withTiming, withSequence, useFrameCallback } from 'react-native-reanimated';
 import { useAppTheme } from '../../engine/colors';
 const W = Dimensions.get('window').width;
-const noise = (x: number, y: number, s: number) => { 'worklet'; const n = Math.sin(x * 12.9898 + y * 78.233 + s * 43758.5453) * 43758.5453; return n - Math.floor(n); };
 const genSparks = (t: number, R: number, boost: number, cx: number, cy: number) => {
   'worklet';
   let d = '';
@@ -63,13 +62,21 @@ export const LivingEntity = ({ radius = 70, height, formed = true, eyesOpen = tr
   const o1 = useDerivedValue(() => 0.35 * form.value);
   const o2 = useDerivedValue(() => 0.2 * form.value);
   const o3 = useDerivedValue(() => 0.1 * form.value);
-  const sparks = useDerivedValue(() => genSparks(time.value, radius * 0.9, boost.value, CX, CY));
-  const gLX = useDerivedValue(() => gazeX.value);
-  const gRX = useDerivedValue(() => gazeX.value * 0.8);
-  const gY = useDerivedValue(() => gazeY.value);
-  const irL = useDerivedValue(() => 6 * irisS.value);
-  const irR = useDerivedValue(() => 6 * irisS.value);
   const opF = useDerivedValue(() => form.value);
+  const sparks = useDerivedValue(() => genSparks(time.value, radius * 0.9, boost.value, CX, CY));
+  const eLX = useDerivedValue(() => CX - 16 + gazeX.value);
+  const eLY = useDerivedValue(() => eyeY + gazeY.value);
+  const eRX = useDerivedValue(() => CX + 16 + gazeX.value * 0.8);
+  const kL = useDerivedValue(() => Math.max(0.05, 1 - lidL.value * 0.9));
+  const kR = useDerivedValue(() => Math.max(0.05, 1 - lidR.value * 0.9));
+  const glowLr = useDerivedValue(() => 9 * kL.value);
+  const glowRr = useDerivedValue(() => 9 * kR.value);
+  const irL = useDerivedValue(() => 6 * irisS.value * kL.value);
+  const irR = useDerivedValue(() => 6 * irisS.value * kR.value);
+  const puL = useDerivedValue(() => 2.6 * kL.value);
+  const puR = useDerivedValue(() => 2.6 * kR.value);
+  const spL = useDerivedValue(() => 1.2 * kL.value);
+  const spR = useDerivedValue(() => 1.2 * kR.value);
   return (
     <Canvas style={{ width: W, height: H }}>
       <Circle cx={CX} cy={CY} r={h3} style="stroke" strokeWidth={0.8} color={C.halo} opacity={o3} />
@@ -79,18 +86,14 @@ export const LivingEntity = ({ radius = 70, height, formed = true, eyesOpen = tr
         <RadialGradient c={vec(CX, CY)} r={R} colors={[C.core1, C.core2, C.core3, C.fade]} />
       </Circle>
       <Path path={sparks} style="stroke" strokeWidth={1.6} strokeCap="round" color={C.spark} opacity={o1} />
-      <Group transform={[{ translateX: CX - 16 + gLX }, { translateY: eyeY + gY }, { scaleY: lidL }]}>
-        <Circle cx={0} cy={0} r={9} opacity={0.5}><RadialGradient c={vec(0, 0)} r={9} colors={[C.iris1, '#00000000']} /></Circle>
-        <Circle cx={0} cy={0} r={irL}><RadialGradient c={vec(0, 0)} r={6} colors={[C.iris1, C.iris2]} /></Circle>
-        <Circle cx={0} cy={0} r={2.6} color={C.pupil} />
-        <Circle cx={-1.6} cy={-1.6} r={1.2} color={C.spec} />
-      </Group>
-      <Group transform={[{ translateX: CX + 16 + gRX }, { translateY: eyeY + gY }, { scaleY: lidR }]}>
-        <Circle cx={0} cy={0} r={9} opacity={0.5}><RadialGradient c={vec(0, 0)} r={9} colors={[C.iris1, '#00000000']} /></Circle>
-        <Circle cx={0} cy={0} r={irR}><RadialGradient c={vec(0, 0)} r={6} colors={[C.iris1, C.iris2]} /></Circle>
-        <Circle cx={0} cy={0} r={2.6} color={C.pupil} />
-        <Circle cx={-1.6} cy={-1.6} r={1.2} color={C.spec} />
-      </Group>
+      <Circle cx={eLX} cy={eLY} r={glowLr} opacity={0.5}><RadialGradient c={vec(CX - 16, eyeY)} r={9} colors={[C.iris1, '#00000000']} /></Circle>
+      <Circle cx={eRX} cy={eLY} r={glowRr} opacity={0.5}><RadialGradient c={vec(CX + 16, eyeY)} r={9} colors={[C.iris1, '#00000000']} /></Circle>
+      <Circle cx={eLX} cy={eLY} r={irL}><RadialGradient c={vec(CX - 16, eyeY)} r={6} colors={[C.iris1, C.iris2]} /></Circle>
+      <Circle cx={eRX} cy={eLY} r={irR}><RadialGradient c={vec(CX + 16, eyeY)} r={6} colors={[C.iris1, C.iris2]} /></Circle>
+      <Circle cx={eLX} cy={eLY} r={puL} color={C.pupil} />
+      <Circle cx={eRX} cy={eLY} r={puR} color={C.pupil} />
+      <Circle cx={eLX} cy={eLY} r={spL} color={C.spec} />
+      <Circle cx={eRX} cy={eLY} r={spR} color={C.spec} />
     </Canvas>
   );
 };
