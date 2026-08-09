@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
-import { apiPost } from '../src/lib/httpClient';
+import { apiPost } from '../lib/httpClient';
 import { useRTL } from '../lib/useRTL';
 import { useAppTheme } from '../engine/colors';
 import { useTwinStore } from '../store/useTwinStore';
@@ -57,7 +57,7 @@ export default function LivingWorld() {
     EventBus.on('MEMORY_SURFACED', onMem);
     EventBus.on('MILESTONE_REACHED', onMile);
     return () => { try { voiceEngine.stop(); } catch {} };
-  }, [userId, setUserId]);
+  }, [userId]);
   const handleSend = useCallback(async () => {
     if (!inputText.trim() || isThinking) return;
     const text = inputText.trim();
