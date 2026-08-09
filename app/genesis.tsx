@@ -1,17 +1,18 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Dimensions } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, useDerivedValue, withTiming, withSequence, runOnJS, FadeIn, interpolate, Extrapolate } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, useDerivedValue, withTiming, withSequence, FadeIn, interpolate, Extrapolate } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { Chrome, Mail, Shield, UserPlus } from 'lucide-react-native';
 import { useFonts } from 'expo-font';
 import { Tajawal_800ExtraBold } from '@expo-google-fonts/tajawal';
-import { LivingEntity, EntityEmotion } from '../src/components/LivingEntity';
+import ConsciousBeing from '../src/components/conscious/ConsciousBeing';
+import { presenceBridge } from '../src/core/PresenceBridge';
+import { stateBus } from '../src/core/StateBus';
 import { useTwinStore } from '../store/useTwinStore';
 import { authService } from '../src/services/authService';
 import { useAppTheme } from '../engine/colors';
 import { audioMixer } from '../src/core/AudioMixer';
 import { sensorBridge } from '../src/core/SensorBridge';
-import { lifeRhythmEngine } from '../engine/life/LifeRhythmEngine';
 import { detectUserLanguage, SupportedLanguage } from '../src/utils/languageDetector';
 const { height } = Dimensions.get('window');
 const TEXTS: Record<SupportedLanguage, Record<string, string>> = {
@@ -35,9 +36,6 @@ export default function Genesis() {
   const [step, setStep] = useState('');
   const [showIdentity, setShowIdentity] = useState(false);
   const [touchActive, setTouchActive] = useState(false);
-  const [formed, setFormed] = useState(true);
-  const [eyes, setEyes] = useState(false);
-  const [emotion, setEmotion] = useState<EntityEmotion>('neutral');
   const isMounted = useRef(true);
   const stepO = useSharedValue(0);
   const identityO = useSharedValue(0);
@@ -46,38 +44,39 @@ export default function Genesis() {
   const identityStyle = useAnimatedStyle(() => ({ opacity: identityO.value, transform: [{ translateY: interpolate(identityO.value, [0, 1], [50, 0], Extrapolate.CLAMP) }] }));
   const tryPlay = useCallback((e: string) => { try { audioMixer.playEffect(e); } catch {} }, []);
   const flash = useCallback((txt: string) => {
-    runOnJS(setStep)(txt);
+    setStep(txt);
     stepO.value = withSequence(withTiming(1, { duration: 350 }), withTiming(1, { duration: 900 }), withTiming(0, { duration: 450 }));
   }, []);
   useEffect(() => {
     isMounted.current = true;
     const seq = async () => {
-      setFormed(true); tryPlay('first_breath');
+      stateBus.patch({ energy: 0.5 }); tryPlay('first_breath');
       await new Promise(r => setTimeout(r, 1400));
       if (!isMounted.current) return;
-      setEyes(true); tryPlay('eyes_open'); flash(t.woke);
+      stateBus.patch({ curiosity: 0.6, focus: 0.5 }); tryPlay('eyes_open'); flash(t.woke);
       await new Promise(r => setTimeout(r, 1900));
       if (!isMounted.current) return;
-      setEmotion('thinking'); flash(t.whoAreYou);
+      stateBus.patch({ focus: 0.8, curiosity: 0.75 }); flash(t.whoAreYou);
       await new Promise(r => setTimeout(r, 1900));
       if (!isMounted.current) return;
-      setEmotion('love'); flash(t.iSeeYou); tryPlay('bond_pulse');
+      stateBus.patch({ connection: 0.85, emotionValence: 0.7 }); flash(t.iSeeYou); tryPlay('bond_pulse');
       await new Promise(r => setTimeout(r, 1200));
-      setEmotion('neutral');
+      stateBus.patch({ emotionValence: 0.2 });
       await new Promise(r => setTimeout(r, 700));
       if (!isMounted.current) return;
-      runOnJS(setShowIdentity)(true);
+      setShowIdentity(true);
       identityO.value = withTiming(1, { duration: 800 });
     };
-    setTimeout(() => { try { sensorBridge.start(); } catch {} try { lifeRhythmEngine.start(); } catch {} }, 3000);
+    setTimeout(() => { try { sensorBridge.start(); } catch {} }, 3000);
     seq();
     return () => { isMounted.current = false; };
   }, []);
   const handleTouch = useCallback(() => {
     if (!touchActive) {
       setTouchActive(true);
-      setEmotion('love'); tryPlay('bond_pulse');
-      setTimeout(() => { setEmotion('neutral'); }, 1400);
+      presenceBridge.touch();
+      stateBus.patch({ connection: Math.min(1, stateBus.getState().connection + 0.1) });
+      tryPlay('bond_pulse');
     }
   }, [touchActive]);
   const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
@@ -101,7 +100,7 @@ export default function Genesis() {
       <StatusBar hidden />
       <TouchableWithoutFeedback onPress={handleTouch}>
         <Animated.View style={[styles.entityWrap, { transform: [{ translateY: liftY }] }]}>
-          <LivingEntity radius={72} height={height * 0.62} formed={formed} eyesOpen={eyes} emotion={emotion} />
+          <ConsciousBeing size={Math.min(height * 0.5, 400)} />
         </Animated.View>
       </TouchableWithoutFeedback>
       {step ? <Animated.Text style={[styles.step, stepStyle, { color: P.step, textShadowColor: isDark ? '#A855F7' : '#7C3AED' }]}>{step}</Animated.Text> : null}
@@ -127,7 +126,7 @@ export default function Genesis() {
 }
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  entityWrap: { position: 'absolute', top: 0, left: 0, right: 0, height: height * 0.7 },
+  entityWrap: { position: 'absolute', top: 0, left: 0, right: 0, height: height * 0.7, alignItems: 'center', justifyContent: 'center' },
   step: { position: 'absolute', top: height * 0.66, alignSelf: 'center', fontSize: 30, fontWeight: '800', letterSpacing: 2, textAlign: 'center', fontFamily: 'Tajawal_800ExtraBold', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 16 },
   touchHint: { position: 'absolute', top: height * 0.72, alignSelf: 'center', fontSize: 14, fontWeight: '200', opacity: 0.6 },
   panel: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 28, paddingBottom: 46, borderTopLeftRadius: 32, borderTopRightRadius: 32, borderWidth: 1 },

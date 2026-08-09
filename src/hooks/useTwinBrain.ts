@@ -4,6 +4,7 @@ import { perceptionEngine } from '../../engine/perception/PerceptionEngine';
 import { contextEngine } from '../../engine/context/ContextEngine';
 import { memoryContextEngine } from '../../engine/memory/MemoryContextEngine';
 import { relationshipContextEngine } from '../../engine/relationship/RelationshipContextEngine';
+import { presenceBridge } from '../core/PresenceBridge';
 import { presenceEngine } from '../../engine/presence/PresenceEngine';
 import { worldAwarenessEngine } from '../../engine/consciousness/WorldAwarenessEngine';
 import { voiceEngine } from '../../engine/voice/VoiceEngine';
@@ -69,7 +70,7 @@ export function useTwinBrain(initialUserId: string = '', initialLang: string = '
     emitPhase('remember', 0.25, lang);
     const memoryCtx = await memoryContextEngine.build(message);
     if (memoryCtx.hasRelatedContext) {
-      presenceEngine.triggerMemoryEcho(memoryCtx.dominantPastEmotion);
+      stateBus.patch({ memoryLevel: 0.85 });
       EventBus.emit('MEMORY_SURFACED', { emotion: memoryCtx.dominantPastEmotion });
     }
     await new Promise(r => setTimeout(r, 200));
@@ -116,8 +117,8 @@ export function useTwinBrain(initialUserId: string = '', initialLang: string = '
     // ✅ الجسد يشعر: ترجمة نية التعبير إلى حركة وصوت
     const expr = (response as any).expression_intent;
     if (expr) {
-      if ((expr.smile || 0) > 0.4) presenceEngine.addMicroExpression('head_nod', expr.smile);
-      if ((expr.concern || 0) > 0.4) presenceEngine.addMicroExpression('membrane_shiver', expr.concern);
+      if ((expr.smile || 0) > 0.4) stateBus.patch({ connection: Math.min(1, stateBus.getState().connection + 0.12) });
+      if ((expr.concern || 0) > 0.4) stateBus.patch({ emotionValence: -0.35 * expr.concern });
       if ((expr.pause || 0) > 0) await new Promise(r => setTimeout(r, Math.min(expr.pause * 800, 1200)));
     }
       }
@@ -132,7 +133,7 @@ export function useTwinBrain(initialUserId: string = '', initialLang: string = '
         ];
 
         EventBus.emit('AI_FINISH_THINKING', { response: response.reply, confidence: 0.9 });
-        try { voiceEngine.speak(response.reply, response.emotion); } catch (e) {}
+        try { voiceEngine.speak(response.reply, response.emotion); presenceBridge.speak(4000); } catch (e) {}
         if (response.memory_surfaced) EventBus.emit('MEMORY_CREATED', { memoryId: response.memory_surfaced.id, layer: 'context' });
 
         return { reply: response.reply, provider: 'unified_brain', emotion: response.twin_emotional_state?.current_emotion || 'neutral', thinkingPhases: phases, memoryStored: !!response.memory_surfaced, relationshipDelta: response.twin_state_update?.bond_delta || 0 };

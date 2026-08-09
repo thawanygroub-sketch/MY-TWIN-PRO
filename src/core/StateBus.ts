@@ -18,6 +18,9 @@ export interface TwinState {
   conversation: ConversationState; memory: MemoryState; workspace: WorkspaceState; relationship: RelationshipState;
   isOnline: boolean; isDegraded: boolean; uptime: number; personalityDNA: Record<string, number>;
   expressionIntent?: { breath: string; smile: number; pause: number; concern: number };
+  energy: number; curiosity: number; arousal: number; focus: number; memoryLevel: number; trust: number; connection: number; emotionValence: number;
+  listening: boolean; speaking: boolean; thinking: boolean; userPresent: boolean;
+  voiceLevel: number; ambientLight: number; movement: number; proximity: number; touch: number; gazeX: number; gazeY: number;
 }
 export const STATE_EVENTS = { MODE_CHANGED:'state:mode_changed', EMOTION_CHANGED:'state:emotion_changed', PRESENCE_CHANGED:'state:presence_changed', AWARENESS_CHANGED:'state:awareness_changed', BOND_CHANGED:'state:bond_changed', STARTED_SPEAKING:'state:started_speaking', STOPPED_SPEAKING:'state:stopped_speaking', MEMORY_RETRIEVED:'state:memory_retrieved', PROCESSING_COMPLETE:'state:processing_complete', THOUGHT_COMPLETE:'cognitive:thought_complete' } as const;
 const DEFAULT_STATE: TwinState = {
@@ -33,6 +36,8 @@ const DEFAULT_STATE: TwinState = {
   isOnline: true, isDegraded: false, uptime: 0,
   consciousness: { energy:0.5, curiosity:0.5, fear:0, joy:0, attention:0.5, memoryEcho:0, cognitiveLoad:0.3, salience:0.3, selfAwareness:0.3, experienceIntensity:0 },
   personalityDNA: { empathy:0.85, curiosity:0.8, humor:0.5, initiative:0.6, reflection:0.9, logic:0.75, creativity:0.8, calmness:0.85 },
+  energy:0.55, curiosity:0.45, arousal:0.35, focus:0.5, memoryLevel:0.2, trust:0.35, connection:0.3, emotionValence:0.05,
+  listening:false, speaking:false, thinking:false, userPresent:true, voiceLevel:0, ambientLight:0.5, movement:0, proximity:0.5, touch:0, gazeX:0, gazeY:0,
 };
 const clampLevel = (v: unknown): PresenceLevel => { const n = Number(v); if (!Number.isFinite(n)) return 2; return Math.max(0, Math.min(9, Math.round(n))) as PresenceLevel; };
 type Sub = (s: TwinState, p: TwinState) => void;
@@ -43,6 +48,8 @@ export class StateBusClass {
   constructor(){ this.state={...DEFAULT_STATE}; this.prevState={...DEFAULT_STATE}; }
   getState(): Readonly<TwinState>{ return this.state; }
   update(p: Partial<TwinState>){ this.apply(p); }
+patch(p: Partial<TwinState>){ this.apply(p); }
+pulseTouch(v: number = 1, decayMs = 1200){ this.apply({ touch: v }); setTimeout(() => this.apply({ touch: 0 }), decayMs); }
   private apply(p: Partial<TwinState>){ this.prevState={...this.state}; this.state={...this.state,...p}; this.subscribers.forEach(s=>{try{s(this.state,this.prevState);}catch(e){console.warn(e);}}); }
   select<T>(sel:(s:TwinState)=>T):T{ return sel(this.state); }
   subscribe(sub:Sub){ this.subscribers.add(sub); return ()=>{ this.subscribers.delete(sub); }; }
@@ -67,6 +74,8 @@ export class StateBusClass {
       memory:{ lastSurfacedId:m?.id||null, pendingSurfacing:false, recentContext:m?.content||null },
       spaceEnergy: emotion==='joy'?'energetic':emotion==='sadness'?'serene':emotion==='fear'?'tense':'tranquil',
       interfaceState:'twin',
+emotionValence: (emotion==='joy'||emotion==='love'||emotion==='excited'?1:(emotion==='sadness'||emotion==='fear'||emotion==='anger'?-1:0))*intensity,
+arousal: intensity, connection: Number(r.trust??50)/100||0.5, memoryLevel: m?0.85:this.state.memoryLevel,
       presenceLevel: clampLevel(p.level ?? (2+intensity*4)),
       personalityDNA:{ ...this.state.personalityDNA, ...dna },
     });

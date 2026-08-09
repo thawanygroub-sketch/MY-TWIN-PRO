@@ -2,7 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { authService } from '../services/authService';
 import { stateBus } from './StateBus';
 import { unifiedBrainBridge } from './UnifiedBrainBridge';
-import { presenceEngine } from '../../engine/presence/PresenceEngine';
+import { presenceEngine, presenceBridge } from './PresenceBridge';
 import { lifeRhythmEngine } from '../../engine/life/LifeRhythmEngine';
 import { sensorBridge } from './SensorBridge';
 import { runtime } from './TwinRuntime';
@@ -36,7 +36,7 @@ export class BootstrapCoordinator {
     }
     // محركات الحضور متدرجة
     setTimeout(() => { try { lifeRhythmEngine.start(); } catch {} }, 200);
-    setTimeout(() => { try { presenceEngine.startPresenceLoop(); } catch {} }, 600);
+    setTimeout(() => { try { presenceBridge.start(); } catch {} }, 600);
     setTimeout(() => { try { sensorBridge.start(); } catch {} }, 1500);
     setTimeout(() => { try { require('./AudioEngine').audioEngine.bindEvents(); } catch {} }, 2500);
     // ✅ الدورة الكاملة (Runtime + AppState) عبر RuntimeCoordinator — لا استنساخ
@@ -75,7 +75,7 @@ export class BootstrapCoordinator {
   }
   shutdown(): void {
     try { this.coordinator?.destroy(); } catch {}
-    try { presenceEngine.stopPresenceLoop(); } catch {}
+    try { presenceEngine.stopPresenceLoop(); presenceBridge.stop(); presenceBridge.stop(); } catch {}
     try { lifeRhythmEngine.stop(); } catch {}
     try { sensorBridge.stop(); } catch {}
     if (this.snapIv) { clearInterval(this.snapIv); this.snapIv = null; }

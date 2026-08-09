@@ -5,11 +5,11 @@ import { useRTL } from '../lib/useRTL';
 import { useAppTheme } from '../engine/colors';
 import { useTwinStore } from '../store/useTwinStore';
 import { bootstrapCoordinator } from '../src/core/BootstrapCoordinator';
-import { audioMixer } from '../src/core/AudioMixer';
-import { EventBus } from '../src/core/EventBus';
 import { stateBus } from '../src/core/StateBus';
+import { presenceBridge } from '../src/core/PresenceBridge';
+import { EventBus } from '../src/core/EventBus';
 import { voiceEngine } from '../engine/voice/VoiceEngine';
-import { LivingEntity, EntityEmotion } from '../src/components/LivingEntity';
+import ConsciousBeing from '../src/components/conscious/ConsciousBeing';
 import { Send, Mic, MicOff, Database, Eye, Heart, Sparkles, Target, Moon } from 'lucide-react-native';
 const { height } = Dimensions.get('window');
 const NET = { ar: 'يحتاج هذا إلى اتصال. ما زلت هنا لكل شيء آخر.', en: 'This needs a connection. I am still here for everything else.' };
@@ -22,29 +22,27 @@ const WINGS = [
   { key: 'goals', label: 'الأهداف', Icon: Target },
   { key: 'dreams', label: 'الأحلام', Icon: Moon },
 ];
-const mapEmotion = (r: any): EntityEmotion => {
-  const em = String(r?.twin_emotional_state?.current_emotion || r?.emotion || r?.tone || '').toLowerCase();
-  if ((r?.expression_intent?.smile || 0) > 0.4) return 'love';
-  if (em.includes('joy') || em.includes('excit')) return 'joy';
-  if (em.includes('concern') || em.includes('sad')) return 'concern';
-  if (em.includes('curious')) return 'thinking';
-  if (em.includes('surpr')) return 'surprise';
-  return 'neutral';
+const feelPatch = (r: any): any => {
+  const em = String(r?.twin_emotional_state?.current_emotion || r?.emotion || '').toLowerCase();
+  if ((r?.expression_intent?.smile || 0) > 0.4) return { connection: 0.8, emotionValence: 0.7, arousal: 0.5 };
+  if (em.includes('joy') || em.includes('excit')) return { emotionValence: 0.7, arousal: 0.6 };
+  if (em.includes('concern') || em.includes('sad')) return { emotionValence: -0.5, arousal: 0.4 };
+  if (em.includes('curious')) return { curiosity: 0.8, focus: 0.5 };
+  if (em.includes('surpr')) return { arousal: 0.9 };
+  return { emotionValence: 0.15 };
 };
 export default function LivingWorld() {
   const userId = useTwinStore(s => s.userId) || '';
   const { colors } = useAppTheme();
-  const [isThinking, setIsThinking] = useState(false);
   const rtl = useRTL();
   const lang = rtl.isRTL ? 'ar' : 'en';
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<Array<{ id: string; sender: 'user' | 'twin'; text: string }>>([]);
   const [isListening, setIsListening] = useState(false);
-  const [emotion, setEmotion] = useState<EntityEmotion>('neutral');
+  const [isThinking, setIsThinking] = useState(false);
   const [wing, setWing] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
-  const emoT = useRef<any>(null); const wingT = useRef<any>(null);
-  const feel = useCallback((e: EntityEmotion, ms = 2600) => { setEmotion(e); if (emoT.current) clearTimeout(emoT.current); emoT.current = setTimeout(() => setEmotion('neutral'), ms); }, []);
+  const wingT = useRef<any>(null);
   const light = useCallback((w: string, ms = 2600) => { setWing(w); if (wingT.current) clearTimeout(wingT.current); wingT.current = setTimeout(() => setWing(null), ms); }, []);
   useEffect(() => {
     if (userId) {
@@ -65,33 +63,34 @@ export default function LivingWorld() {
     setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text }]);
     setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'twin', text: '' }]);
     EventBus.emit('USER_SEND_MESSAGE', {});
-    setEmotion('thinking'); light('intuition');
+    stateBus.patch({ thinking: true, focus: 0.8 }); light('intuition');
     setIsThinking(true);
     try {
       const response: any = await apiPost('/api/chat', { message: text, user_id: userId });
       const silence = Number(response?.silence_ms || 0);
       if (silence > 0) await new Promise(r => setTimeout(r, Math.min(silence, 3500)));
-      if (response) stateBus.updateFromUnifiedResponse(response);
       setOnline(true);
-      feel(mapEmotion(response));
+      stateBus.patch(feelPatch(response));
       if (response?.memory_surfaced) { EventBus.emit('MEMORY_SURFACED', {}); light('memory'); }
       light('emotion');
+      try { voiceEngine.speak(response?.reply || '', response?.emotion); presenceBridge.speak(4000); } catch {}
       setMessages(prev => { const u = [...prev]; u[u.length - 1] = { ...u[u.length - 1], text: response?.reply || SRV[lang as 'ar'] }; return u; });
     } catch {
       setOnline(false);
-      feel('concern');
+      stateBus.patch({ emotionValence: -0.4, arousal: 0.4 });
       setMessages(prev => { const u = [...prev]; u[u.length - 1] = { ...u[u.length - 1], text: NET[lang as 'ar'] }; return u; });
     } finally {
       setIsThinking(false);
+      stateBus.patch({ thinking: false });
     }
-  }, [inputText, isThinking, userId, feel, light, lang]);
+  }, [inputText, isThinking, userId, light, lang]);
   const toggleListening = async () => {
-    if (isListening) { voiceEngine.stopListening(); setIsListening(false); }
-    else { try { await voiceEngine.startListening(); setIsListening(true); } catch {} }
+    if (isListening) { voiceEngine.stopListening(); setIsListening(false); stateBus.patch({ listening: false }); }
+    else { try { await voiceEngine.startListening(); setIsListening(true); stateBus.patch({ listening: true }); } catch {} }
   };
   return (
     <KeyboardAvoidingView style={[styles.container, { backgroundColor: colors.bg }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <View style={styles.entityWrapper}><LivingEntity radius={52} height={height * 0.34} emotion={emotion} /></View>
+      <View style={styles.entityWrapper}><ConsciousBeing size={Math.min(height * 0.34, 300)} /></View>
       <View style={styles.wingsRow}>
         {WINGS.map(w => (
           <View key={w.key} style={[styles.wing, wing === w.key && { backgroundColor: colors.accent + '22', borderColor: colors.accent }]}>
@@ -122,7 +121,7 @@ export default function LivingWorld() {
 }
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  entityWrapper: { position: 'absolute', top: 0, left: 0, right: 0, height: height * 0.36 },
+  entityWrapper: { position: 'absolute', top: 0, left: 0, right: 0, height: height * 0.36, alignItems: 'center', justifyContent: 'center' },
   wingsRow: { position: 'absolute', top: height * 0.345, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6, flexWrap: 'wrap', paddingHorizontal: 12 },
   wing: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' },
   wingText: { fontSize: 11 },
