@@ -35,12 +35,13 @@ export default function Genesis() {
   const [step, setStep] = useState('');
   const [showIdentity, setShowIdentity] = useState(false);
   const [touchActive, setTouchActive] = useState(false);
-  const [formed, setFormed] = useState(false);
+  const [formed, setFormed] = useState(true);
   const [eyes, setEyes] = useState(false);
   const [emotion, setEmotion] = useState<EntityEmotion>('neutral');
   const isMounted = useRef(true);
   const stepO = useSharedValue(0);
   const identityO = useSharedValue(0);
+  const liftY = useDerivedValue(() => -identityO.value * 240);
   const stepStyle = useAnimatedStyle(() => ({ opacity: stepO.value }));
   const identityStyle = useAnimatedStyle(() => ({ opacity: identityO.value, transform: [{ translateY: interpolate(identityO.value, [0, 1], [50, 0], Extrapolate.CLAMP) }] }));
   const tryPlay = useCallback((e: string) => { try { audioMixer.playEffect(e); } catch {} }, []);
@@ -99,9 +100,9 @@ export default function Genesis() {
     <KeyboardAvoidingView style={[styles.root, { backgroundColor: P.bg }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar hidden />
       <TouchableWithoutFeedback onPress={handleTouch}>
-        <View style={styles.entityWrap}>
+        <Animated.View style={[styles.entityWrap, { transform: [{ translateY: liftY }] }]}>
           <LivingEntity radius={72} height={height * 0.62} formed={formed} eyesOpen={eyes} emotion={emotion} />
-        </View>
+        </Animated.View>
       </TouchableWithoutFeedback>
       {step ? <Animated.Text style={[styles.step, stepStyle, { color: P.step, textShadowColor: isDark ? '#A855F7' : '#7C3AED' }]}>{step}</Animated.Text> : null}
       {!touchActive && !showIdentity && <Text style={[styles.touchHint, { color: P.hint }]}>{t.touchHint}</Text>}
