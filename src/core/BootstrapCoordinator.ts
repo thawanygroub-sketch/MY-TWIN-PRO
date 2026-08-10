@@ -3,6 +3,7 @@ import { authService } from '../services/authService';
 import { stateBus } from './StateBus';
 import { unifiedBrainBridge } from './UnifiedBrainBridge';
 import { presenceEngine, presenceBridge } from './PresenceBridge';
+import { sensorCollector } from './SensorCollector';
 import { lifeRhythmEngine } from '../../engine/life/LifeRhythmEngine';
 import { sensorBridge } from './SensorBridge';
 import { runtime } from './TwinRuntime';
@@ -36,7 +37,8 @@ export class BootstrapCoordinator {
     }
     // محركات الحضور متدرجة
     setTimeout(() => { try { lifeRhythmEngine.start(); } catch {} }, 200);
-    setTimeout(() => { try { presenceBridge.start(); } catch {} }, 600);
+    setTimeout(() => { try { presenceBridge.start();
+      try { sensorCollector.start(); } catch {} } catch {} }, 600);
     setTimeout(() => { try { sensorBridge.start(); } catch {} }, 1500);
     setTimeout(() => { try { require('./AudioEngine').audioEngine.bindEvents(); } catch {} }, 2500);
     // ✅ الدورة الكاملة (Runtime + AppState) عبر RuntimeCoordinator — لا استنساخ
