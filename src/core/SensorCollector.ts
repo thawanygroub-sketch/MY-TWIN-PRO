@@ -1,16 +1,22 @@
 import { devicePresenceEngine } from '../../engine/device/DevicePresenceEngine';
+type SensorSub = { remove: () => void };
 class SensorCollector {
   private started = false;
-  private ivs: any[] = [];
+  private ivs: ReturnType<typeof setInterval>[] = [];
+  private subs: SensorSub[] = [];
   start(): void {
     if (this.started) return;
     this.started = true;
     try {
-      const { Accelerometer, Gyroscope, LightSensor, Barometer } = require('expo-sensors');
-      try { Accelerometer.setUpdateInterval(400); Accelerometer.addListener((d: any) => devicePresenceEngine.updateAccelerometer(d.x, d.y, d.z)); } catch {}
-      try { Gyroscope.setUpdateInterval(600); Gyroscope.addListener((d: any) => devicePresenceEngine.updateGyroscope(d.x, d.y, d.z)); } catch {}
-      try { LightSensor.setUpdateInterval(2500); LightSensor.addListener((d: any) => d?.illuminance != null && devicePresenceEngine.updateLightLevel(d.illuminance)); } catch {}
-      try { Barometer.setUpdateInterval(4000); Barometer.addListener((d: any) => d?.pressure != null && devicePresenceEngine.updateBarometer(d.pressure)); } catch {}
+      const S = require('expo-sensors');
+      const wire = (sensor: any, interval: number, cb: (d: any) => void) => {
+        try { sensor.setUpdateInterval(interval); this.subs.push(sensor.addListener(cb)); } catch {}
+      };
+      wire(S.Accelerometer, 400, (d: any) => devicePresenceEngine.updateAccelerometer(d.x, d.y, d.z));
+      wire(S.Gyroscope, 600, (d: any) => devicePresenceEngine.updateGyroscope(d.x, d.y, d.z));
+      wire(S.LightSensor, 2500, (d: any) => { if (d?.illuminance != null) devicePresenceEngine.updateLightLevel(d.illuminance); });
+      wire(S.Barometer, 4000, (d: any) => { if (d?.pressure != null) devicePresenceEngine.updateBarometer(d.pressure); });
+      wire(S.Pedometer, 15000, (d: any) => { if (d?.steps != null) devicePresenceEngine.updateStepCount(d.steps); });
     } catch {}
     try {
       const Battery = require('expo-battery');
@@ -31,6 +37,13 @@ class SensorCollector {
     }, 1000));
     devicePresenceEngine.start();
   }
-  stop(): void { this.ivs.forEach((iv) => clearInterval(iv)); this.ivs = []; this.started = false; devicePresenceEngine.stop(); }
+  stop(): void {
+    this.subs.forEach((s) => { try { s.remove(); } catch {} });
+    this.subs = [];
+    this.ivs.forEach((iv) => clearInterval(iv));
+    this.ivs = [];
+    this.started = false;
+    devicePresenceEngine.stop();
+  }
 }
 export const sensorCollector = new SensorCollector();

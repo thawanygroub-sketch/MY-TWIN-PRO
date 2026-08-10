@@ -46,6 +46,7 @@ export default function LivingWorld() {
   const [wingData, setWingData] = useState<Array<{ k: string; v: string }>>([]);
   const [online, setOnline] = useState(true);
   const [diag, setDiag] = useState('');
+  const [tele, setTele] = useState<{ n: number; hb: number | null } | null>(null);
   const wingT = useRef<any>(null);
   const light = useCallback((w: string, ms = 2600) => { setWing(w); if (wingT.current) clearTimeout(wingT.current); wingT.current = setTimeout(() => setWing(null), ms); }, []);
   useEffect(() => {
@@ -71,6 +72,21 @@ export default function LivingWorld() {
       else setWingData([{ k: 'الحدس', v: 'أتعلم من سياقاتك وستزداد حدسي مع كل حوار.' }]);
     } catch (e: any) { setWingData([{ k: 'تنبيه', v: String(e?.message || e).slice(0, 80) }]); }
   }, [userId, light]);
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const d: any = await apiGet('/api/system/status');
+        if (alive) { setTele({ n: d?.engines_count ?? 0, hb: d?.last_heartbeat_sec_ago ?? null }); setOnline(true); }
+      } catch { if (alive) setOnline(false); }
+    };
+    load();
+    const iv = setInterval(load, 60000);
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
+  const statusLine = tele
+    ? (rtl.isRTL ? `${tele.n} محركًا حيًا • ${tele.hb != null ? `نبض قبل ${tele.hb}ث` : 'النبض نشط'} • ${online ? 'متصل' : 'دون اتصال'}` : `${tele.n} living engines • ${tele.hb != null ? `beat ${tele.hb}s ago` : 'beat active'} • ${online ? 'online' : 'offline'}`)
+    : (online ? (rtl.isRTL ? 'متصل' : 'online') : (rtl.isRTL ? 'دون اتصال' : 'offline'));
   const handleSend = useCallback(async () => {
     if (!inputText.trim() || isThinking) return;
     const text = inputText.trim();
@@ -117,7 +133,7 @@ export default function LivingWorld() {
           ))}
         </View>
         <Text style={[styles.status, { color: colors.textSecondary }]}>
-          {rtl.isRTL ? `١٤ محركًا حيًا • ${online ? 'متصل' : 'دون اتصال'}` : `14 living engines • ${online ? 'online' : 'offline'}`}{diag ? ` • ${diag}` : ''}
+          {statusLine}{diag ? ` • ${diag}` : ''}
         </Text>
       </View>
       {activeWing && (
