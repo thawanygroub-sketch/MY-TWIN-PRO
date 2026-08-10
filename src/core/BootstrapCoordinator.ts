@@ -38,7 +38,15 @@ export class BootstrapCoordinator {
     // محركات الحضور متدرجة
     setTimeout(() => { try { lifeRhythmEngine.start(); } catch {} }, 200);
     setTimeout(() => { try { presenceBridge.start();
-      try { sensorCollector.start(); } catch {} } catch {} }, 600);
+      try { sensorCollector.start(); } catch {}
+      try {
+        const uid = useTwinStore.getState().userId || '';
+        if (uid) apiGet(`/api/system/snapshot?user_id=${uid}`).then((d: any) => {
+          const st = d?.state || {};
+          const c = (v: any, fb: number) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : fb; };
+          stateBus.patch({ energy: c(st.energy_level ?? st.energy, 0.5), connection: c(st.bond_depth, 0.3), trust: c(st.trust, 0.35), focus: c(1 - Number(st.cognitive_load ?? 0.3), 0.5), memoryLevel: c(st.memory_echo, 0.2) });
+        }).catch(() => {});
+      } catch {} } catch {} }, 600);
     setTimeout(() => { try { sensorBridge.start(); } catch {} }, 1500);
     setTimeout(() => { try { require('./AudioEngine').audioEngine.bindEvents(); } catch {} }, 2500);
     // ✅ الدورة الكاملة (Runtime + AppState) عبر RuntimeCoordinator — لا استنساخ

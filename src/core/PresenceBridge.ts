@@ -26,8 +26,9 @@ class PresenceBridge {
     this.unsubs.push(EventBus.on('AI_START_THINKING', () => stateBus.patch({ thinking: true, focus: Math.max(stateBus.getState().focus, 0.72), arousal: Math.max(stateBus.getState().arousal, 0.48) })));
     this.unsubs.push(EventBus.on('AI_FINISH_THINKING', () => stateBus.patch({ thinking: false })));
     this.unsubs.push(EventBus.on('USER_SEND_MESSAGE', () => { stateBus.patch({ listening: true }); setTimeout(() => stateBus.patch({ listening: false }), 3000); }));
-    this.unsubs.push(EventBus.on('MEMORY_SURFACED', (_e: any, data: any) => {
-      const emotion = String(data?.emotion ?? '');
+    this.unsubs.push(EventBus.on('MEMORY_SURFACED', (_ev: any, data?: any) => {
+      const d = data ?? _ev;
+      const emotion = String(d?.emotion ?? '');
       const bias = emotion.includes('sad') || emotion.includes('fear') ? -0.25 : emotion.includes('joy') || emotion.includes('love') ? 0.3 : 0.1;
       stateBus.patch({ memoryLevel: 0.85, curiosity: Math.max(stateBus.getState().curiosity, 0.62), emotionValence: bias });
     }));

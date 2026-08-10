@@ -1,7 +1,7 @@
 import type { ConsciousnessSource, ConsciousnessState, PresenceEmotion, PresenceState, RGB } from './PresenceTypes';
 import { stateBus } from '../../src/core/StateBus';
 type Listener = (state: PresenceState) => void;
-const clamp01 = (n: number) => Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0));
+const clamp01 = (n: number, fb = 0) => { const v = Number.isFinite(n) ? n : fb; return Math.max(0, Math.min(1, v)); };
 const signed = (n: number) => Math.max(-1, Math.min(1, Number.isFinite(n) ? n : 0));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const smooth = (c: number, t: number, f: number) => lerp(c, t, 1 - Math.pow(1 - clamp01(f), 2));
